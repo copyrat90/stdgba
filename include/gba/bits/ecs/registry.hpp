@@ -8,9 +8,11 @@
 
 #include <array>
 #include <bit>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -29,7 +31,7 @@ namespace gba::ecs {
             for (std::size_t i = 0; i < sizeof...(Ts); ++i) {
                 if (matches[i]) return i;
             }
-            throw "component type not registered in this registry";
+            assert(false && "component type not registered in this registry");
         }
 
         /// @brief Extract component types from a flattened group.
@@ -39,6 +41,11 @@ namespace gba::ecs {
         template<typename... Cs>
         struct extract_components<group<Cs...>> {
             using type = std::tuple<Cs...>;
+        };
+
+        template <typename C>
+        struct component_storage {
+            alignas(alignof(C)) std::byte m_storage[std::bit_ceil(sizeof(C))];
         };
 
     } // namespace detail
@@ -55,7 +62,6 @@ namespace gba::ecs {
     class registry_impl {
         static_assert(Capacity > 0 && Capacity <= 255, "capacity must be in [1, 255]");
         static_assert(sizeof...(Components) > 0 && sizeof...(Components) <= 31, "component count must be in [1, 31]");
-        static_assert(((std::has_single_bit(sizeof(Components))) && ...), "all component sizes must be powers of two");
 
         /// Index of component C in the Components... pack.
         template<typename C>
@@ -99,7 +105,7 @@ namespace gba::ecs {
         std::uint8_t m_alive_index[Capacity]{};
 
         /// Flat component pools (one array per component type).
-        std::tuple<std::array<Components, Capacity>...> m_pools{};
+        std::tuple<std::array<detail::component_storage<Components>, Capacity>...> m_pools{};
 
         [[gnu::always_inline]] constexpr std::uint8_t allocate_slot() noexcept {
             std::uint8_t slot;
@@ -134,14 +140,18 @@ namespace gba::ecs {
         /// Access component C at a given slot.
         template<typename C>
         [[gnu::always_inline]] constexpr C& pool_ref(unsigned int slot) noexcept {
-            return std::get<index_of<C>>(m_pools)[slot];
+            return *std::launder(reinterpret_cast<C*>(std::get<index_of<C>>(m_pools).data() + slot));
         }
         template<typename C>
         [[gnu::always_inline]] constexpr const C& pool_ref(unsigned int slot) const noexcept {
-            return std::get<index_of<C>>(m_pools)[slot];
+            return *std::launder(reinterpret_cast<const C*>(std::get<index_of<C>>(m_pools).data() + slot));
         }
 
     public:
+        constexpr ~registry_impl() {
+            clear();
+        }
+
         /// @brief Lightweight view over entities matching a component set.
         ///
         /// Supports range-based for (structured bindings) and `.each()`.
@@ -303,7 +313,7 @@ namespace gba::ecs {
         /// (no runtime capacity check).
         [[nodiscard]] constexpr const entity create() {
             if consteval {
-                if (m_alive >= static_cast<std::uint8_t>(Capacity)) throw "registry::create: capacity exceeded";
+                assert(m_alive < static_cast<std::uint8_t>(Capacity) && "registry::create: capacity exceeded");
             }
             const auto slot = allocate_slot();
             return entity(slot, m_gen[slot]);
@@ -315,22 +325,26 @@ namespace gba::ecs {
             static_assert(sizeof...(Cs) > 0, "create_emplace requires at least one component");
             static_assert(sizeof...(Cs) == sizeof...(Values), "create_emplace requires one value per component");
             if consteval {
-                if (m_alive >= static_cast<std::uint8_t>(Capacity)) throw "registry::create_emplace: capacity exceeded";
+                assert(m_alive < static_cast<std::uint8_t>(Capacity) && "registry::create_emplace: capacity exceeded");
             }
 
             const auto slot = allocate_slot();
             m_mask[slot] = alive_bit | (bit_of<Cs> | ...);
             (++m_component_count[index_of<Cs>], ...);
-            ((std::get<index_of<Cs>>(m_pools)[slot] = Cs{std::forward<Values>(values)}), ...);
+            ((std::construct_at(reinterpret_cast<Cs*>(std::get<index_of<Cs>>(m_pools).data() + slot), std::forward<Values>(values))), ...);
             return entity(slot, m_gen[slot]);
         }
 
         /// @brief Destroy an entity, freeing its slot for reuse.
         constexpr void destroy(const entity e) {
             if consteval {
-                if (!valid(e)) throw "registry::destroy: invalid entity";
+                assert(valid(e) && "registry::destroy: invalid entity");
             }
             const auto slot = e.slot;
+            ([&] {
+                if (m_mask[slot] & bit_of<Components>)
+                    std::destroy_at(std::launder(reinterpret_cast<Components*>(std::get<index_of<Components>>(m_pools).data() + slot)));
+            }(), ...);
             if constexpr (sizeof...(Components) <= 8) {
                 ((m_mask[slot] & bit_of<Components> ? --m_component_count[index_of<Components>] : 0), ...);
             } else {
@@ -369,6 +383,10 @@ namespace gba::ecs {
         constexpr void clear() {
             for (unsigned int j = 0; j < m_alive; ++j) {
                 const auto slot = m_alive_list[j];
+                ([&] {
+                    if (m_mask[slot] & bit_of<Components>)
+                        std::destroy_at(std::launder(reinterpret_cast<Components*>(std::get<index_of<Components>>(m_pools).data() + slot)));
+                }(), ...);
                 ++m_gen[slot];
                 m_mask[slot] = 0;
             }
@@ -384,23 +402,22 @@ namespace gba::ecs {
         template<typename C, typename... Args>
         constexpr C& emplace(const entity e, Args&&... args) {
             if consteval {
-                if (!valid(e)) throw "registry::emplace: invalid entity";
-                if (m_mask[e.slot] & bit_of<C>) throw "registry::emplace: component already exists";
+                assert(valid(e) && "registry::emplace: invalid entity");
+                assert(!(m_mask[e.slot] & bit_of<C>) && "registry::emplace: component already exists");
             }
             const auto slot = e.slot;
             m_mask[slot] |= bit_of<C>;
             ++m_component_count[index_of<C>];
-            auto& comp = std::get<index_of<C>>(m_pools)[slot];
-            comp = C{std::forward<Args>(args)...};
-            return comp;
+            return *std::construct_at(reinterpret_cast<C*>(std::get<index_of<C>>(m_pools).data() + slot), std::forward<Args>(args)...);
         }
 
         /// @brief Remove a component from an entity.
         template<typename C>
         constexpr void remove(const entity e) {
             if consteval {
-                if (!valid(e)) throw "registry::remove: invalid entity";
+                assert(valid(e) && "registry::remove: invalid entity");
             }
+            std::destroy_at(std::launder(reinterpret_cast<C*>(std::get<index_of<C>>(m_pools).data() + e.slot)));
             m_mask[e.slot] &= ~bit_of<C>;
             --m_component_count[index_of<C>];
         }
@@ -409,6 +426,7 @@ namespace gba::ecs {
         template<typename... Cs>
         constexpr void remove_unchecked(const entity e) noexcept {
             static_assert(sizeof...(Cs) > 0, "remove_unchecked requires at least one component");
+            (std::destroy_at(std::launder(reinterpret_cast<Cs*>(std::get<index_of<Cs>>(m_pools).data() + e.slot))), ...);
             const auto slot = e.slot;
             constexpr std::uint32_t clear_mask = (bit_of<Cs> | ...);
             m_mask[slot] &= ~clear_mask;
@@ -418,8 +436,9 @@ namespace gba::ecs {
         /// @brief Remove a component using a direct pool reference without checks.
         template<typename C>
         constexpr void remove_unchecked(C& component) noexcept {
-            auto* base = std::get<index_of<C>>(m_pools).data();
+            auto* base = std::launder(reinterpret_cast<C*>(std::get<index_of<C>>(m_pools).data()));
             auto* ptr = std::addressof(component);
+            std::destroy_at(ptr);
             const auto slot = static_cast<unsigned int>(ptr - base);
             m_mask[slot] &= ~bit_of<C>;
             --m_component_count[index_of<C>];
@@ -428,13 +447,13 @@ namespace gba::ecs {
         /// @brief Get a mutable reference to an entity's component.
         template<typename C>
         [[nodiscard]] constexpr C& get(const entity e) noexcept {
-            return std::get<index_of<C>>(m_pools)[e.slot];
+            return *std::launder(reinterpret_cast<C*>(std::get<index_of<C>>(m_pools).data() + e.slot));
         }
 
         /// @brief Get a const reference to an entity's component.
         template<typename C>
         [[nodiscard]] constexpr const C& get(const entity e) const noexcept {
-            return std::get<index_of<C>>(m_pools)[e.slot];
+            return *std::launder(reinterpret_cast<const C*>(std::get<index_of<C>>(m_pools).data() + e.slot));
         }
 
         /// @brief Try to get a mutable component pointer. Returns nullptr if missing/invalid.
@@ -443,7 +462,7 @@ namespace gba::ecs {
             if (!valid(e)) return nullptr;
             const auto slot = e.slot;
             if ((m_mask[slot] & bit_of<C>) == 0) return nullptr;
-            return &std::get<index_of<C>>(m_pools)[slot];
+            return std::launder(reinterpret_cast<C*>(std::get<index_of<C>>(m_pools).data() + e.slot));
         }
 
         /// @brief Try to get a const component pointer. Returns nullptr if missing/invalid.
@@ -452,7 +471,7 @@ namespace gba::ecs {
             if (!valid(e)) return nullptr;
             const auto slot = e.slot;
             if ((m_mask[slot] & bit_of<C>) == 0) return nullptr;
-            return &std::get<index_of<C>>(m_pools)[slot];
+            return std::launder(reinterpret_cast<const C*>(std::get<index_of<C>>(m_pools).data() + e.slot));
         }
 
         /// @brief Run callback with mutable component reference if present.
