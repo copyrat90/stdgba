@@ -21,6 +21,12 @@ namespace gba::ecs {
 
     namespace detail {
 
+#if defined(__cpp_constexpr) && __cpp_constexpr >= 202406L
+        inline constexpr bool supports_constexpr_byte_lifetime = true;
+#else
+        inline constexpr bool supports_constexpr_byte_lifetime = false;
+#endif
+
         /// @brief Consteval type index lookup in a parameter pack.
         ///
         /// Returns the zero-based index of @p Target in @p Ts... .
@@ -58,6 +64,43 @@ namespace gba::ecs {
         static_assert(Capacity > 0 && Capacity <= 255, "capacity must be in [1, 255]");
         static_assert(sizeof...(Components) > 0 && sizeof...(Components) <= 31, "component count must be in [1, 31]");
         static_assert(((std::has_single_bit(sizeof(Components))) && ...), "all component sizes must be powers of two");
+        static_assert(
+            detail::supports_constexpr_byte_lifetime || (std::is_default_constructible_v<Components> && ...),
+            "non-default-constructible ECS components require C++26 constexpr byte-lifetime features"
+        );
+
+        template<typename C>
+        struct pool_storage {
+            static_assert(std::is_object_v<C>, "component type must be an object type");
+
+            // C++26 path: constexpr byte-storage using void*-cast + placement new
+            // (non-default-constructible support).
+            // C++23 fallback: legacy default-constructed array storage to keep constexpr behavior.
+#if defined(__cpp_constexpr) && __cpp_constexpr >= 202406L
+            std::array<std::byte, sizeof(C) * Capacity> bytes{};
+
+            [[nodiscard]] constexpr C* ptr_at(const std::size_t i) noexcept {
+                return static_cast<C*>(static_cast<void*>(bytes.data() + i * sizeof(C)));
+            }
+            [[nodiscard]] constexpr const C* ptr_at(const std::size_t i) const noexcept {
+                return static_cast<const C*>(static_cast<const void*>(bytes.data() + i * sizeof(C)));
+            }
+#else
+            std::array<C, Capacity> values{};
+
+            [[nodiscard]] constexpr C* ptr_at(const std::size_t i) noexcept {
+                return std::addressof(values[i]);
+            }
+            [[nodiscard]] constexpr const C* ptr_at(const std::size_t i) const noexcept {
+                return std::addressof(values[i]);
+            }
+#endif
+
+            [[nodiscard]] constexpr C* data() noexcept { return ptr_at(0); }
+            [[nodiscard]] constexpr const C* data() const noexcept { return ptr_at(0); }
+            [[nodiscard]] constexpr C& operator[](const std::size_t i) noexcept { return *ptr_at(i); }
+            [[nodiscard]] constexpr const C& operator[](const std::size_t i) const noexcept { return *ptr_at(i); }
+        };
 
         /// Index of component C in the Components... pack.
         template<typename C>
@@ -100,8 +143,8 @@ namespace gba::ecs {
         /// Reverse map: slot -> index in m_alive_list (for O(1) swap-and-pop).
         std::uint8_t m_alive_index[Capacity]{};
 
-        /// Flat component pools (one array per component type).
-        std::tuple<std::array<Components, Capacity>...> m_pools{};
+        /// Flat component pools (one storage pool per component type).
+        std::tuple<pool_storage<Components>...> m_pools{};
 
         [[gnu::always_inline]] constexpr std::uint8_t allocate_slot() noexcept {
             std::uint8_t slot;
@@ -141,6 +184,17 @@ namespace gba::ecs {
         template<typename C>
         [[gnu::always_inline]] constexpr const C& pool_ref(unsigned int slot) const noexcept {
             return std::get<index_of<C>>(m_pools)[slot];
+        }
+
+        template<typename C>
+        constexpr void maybe_destroy_component(const unsigned int slot) noexcept {
+            if constexpr (detail::supports_constexpr_byte_lifetime) {
+                if constexpr (!std::is_trivially_destructible_v<C>) {
+                    if ((m_mask[slot] & bit_of<C>) != 0u) {
+                        std::destroy_at(pool<C>().ptr_at(slot));
+                    }
+                }
+            }
         }
 
     public:
@@ -334,9 +388,17 @@ namespace gba::ecs {
             m_mask[slot] = alive_bit | (bit_of<Cs> | ...);
             (++m_component_count[index_of<Cs>], ...);
             if constexpr (sizeof...(Values) == 0) {
-                ((std::get<index_of<Cs>>(m_pools)[slot] = Cs{}), ...);
+                if constexpr (detail::supports_constexpr_byte_lifetime) {
+                    (std::construct_at(std::get<index_of<Cs>>(m_pools).ptr_at(slot)), ...);
+                } else {
+                    ((std::get<index_of<Cs>>(m_pools)[slot] = Cs{}), ...);
+                }
             } else {
-                ((std::get<index_of<Cs>>(m_pools)[slot] = Cs{std::forward<Values>(values)}), ...);
+                if constexpr (detail::supports_constexpr_byte_lifetime) {
+                    (std::construct_at(std::get<index_of<Cs>>(m_pools).ptr_at(slot), std::forward<Values>(values)), ...);
+                } else {
+                    ((std::get<index_of<Cs>>(m_pools)[slot] = Cs{std::forward<Values>(values)}), ...);
+                }
             }
             return entity(slot, m_gen[slot]);
         }
@@ -358,6 +420,7 @@ namespace gba::ecs {
                     present &= (present - 1u);
                 }
             }
+            (maybe_destroy_component<Components>(slot), ...);
             m_mask[slot] = 0;
             ++m_gen[slot];
             m_free_stack[m_free_top++] = slot;
@@ -385,6 +448,7 @@ namespace gba::ecs {
         constexpr void clear() {
             for (unsigned int j = 0; j < m_alive; ++j) {
                 const auto slot = m_alive_list[j];
+                (maybe_destroy_component<Components>(slot), ...);
                 ++m_gen[slot];
                 m_mask[slot] = 0;
             }
@@ -406,9 +470,15 @@ namespace gba::ecs {
             const auto slot = e.slot;
             m_mask[slot] |= bit_of<C>;
             ++m_component_count[index_of<C>];
-            auto& comp = std::get<index_of<C>>(m_pools)[slot];
-            comp = C{std::forward<Args>(args)...};
-            return comp;
+            if constexpr (detail::supports_constexpr_byte_lifetime) {
+                auto* comp = std::get<index_of<C>>(m_pools).ptr_at(slot);
+                std::construct_at(comp, std::forward<Args>(args)...);
+                return *comp;
+            } else {
+                auto& comp = std::get<index_of<C>>(m_pools)[slot];
+                comp = C{std::forward<Args>(args)...};
+                return comp;
+            }
         }
 
         /// @brief Remove a component from an entity.
@@ -416,6 +486,9 @@ namespace gba::ecs {
         constexpr void remove(const entity e) {
             if consteval {
                 ::gba::bits::constexpr_assert(!valid(e), "registry::remove: invalid entity");
+            }
+            if constexpr (detail::supports_constexpr_byte_lifetime && !std::is_trivially_destructible_v<C>) {
+                std::destroy_at(std::get<index_of<C>>(m_pools).ptr_at(e.slot));
             }
             m_mask[e.slot] &= ~bit_of<C>;
             --m_component_count[index_of<C>];
@@ -427,6 +500,11 @@ namespace gba::ecs {
             static_assert(sizeof...(Cs) > 0, "remove_unchecked requires at least one component");
             const auto slot = e.slot;
             constexpr std::uint32_t clear_mask = (bit_of<Cs> | ...);
+            if constexpr (detail::supports_constexpr_byte_lifetime) {
+                ((std::is_trivially_destructible_v<Cs>
+                      ? void()
+                      : std::destroy_at(std::get<index_of<Cs>>(m_pools).ptr_at(slot))), ...);
+            }
             m_mask[slot] &= ~clear_mask;
             (--m_component_count[index_of<Cs>], ...);
         }
@@ -437,6 +515,9 @@ namespace gba::ecs {
             auto* base = std::get<index_of<C>>(m_pools).data();
             auto* ptr = std::addressof(component);
             const auto slot = static_cast<unsigned int>(ptr - base);
+            if constexpr (detail::supports_constexpr_byte_lifetime && !std::is_trivially_destructible_v<C>) {
+                std::destroy_at(ptr);
+            }
             m_mask[slot] &= ~bit_of<C>;
             --m_component_count[index_of<C>];
         }
@@ -519,6 +600,15 @@ namespace gba::ecs {
         template<typename... ViewCs>
         [[nodiscard]] constexpr basic_view<ViewCs...> view() noexcept {
             return basic_view<ViewCs...>{this};
+        }
+
+        constexpr ~registry_impl() noexcept {
+            if constexpr ((!std::is_trivially_destructible_v<Components> || ...)) {
+                for (unsigned int j = 0; j < m_alive; ++j) {
+                    const auto slot = m_alive_list[j];
+                    (maybe_destroy_component<Components>(slot), ...);
+                }
+            }
         }
     };
 
