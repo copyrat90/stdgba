@@ -1,5 +1,11 @@
 /// @file bits/ecs/registry.hpp
 /// @brief Static ECS registry with compile-time component list.
+
+// This source is an altered version of stdgba ECS registry, edited by copyrat90.
+// It allows non-default-constructible components, while giving up constexpr support.
+//
+// It isn't well tested, so use it at your own risk.
+
 #pragma once
 
 #include <gba/bits/ecs/entity.hpp>
