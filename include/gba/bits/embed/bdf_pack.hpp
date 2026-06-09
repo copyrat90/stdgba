@@ -2,6 +2,8 @@
 /// @brief Internal BDF bitmap row packing helpers for gba::embed.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <cstddef>
 #include <cstdint>
 
@@ -26,7 +28,7 @@ namespace gba::embed::bits {
         if (c >= '0' && c <= '9') return static_cast<unsigned int>(c - '0');
         if (c >= 'A' && c <= 'F') return 10u + static_cast<unsigned int>(c - 'A');
         if (c >= 'a' && c <= 'f') return 10u + static_cast<unsigned int>(c - 'a');
-        throw "bdf: invalid hex digit";
+        ::gba::bits::constexpr_fail("bdf: invalid hex digit");
     }
 
     /// @brief Pack one BDF BITMAP row into BitUnPack-friendly 1bpp bytes.
@@ -55,7 +57,7 @@ namespace gba::embed::bits {
                 ++out_bit;
                 ++x;
                 if (out_bit == 8) {
-                    if (out_index >= stride) throw "bdf: packed row exceeds stride";
+                    ::gba::bits::constexpr_assert(out_index >= stride, "bdf: packed row exceeds stride");
                     dest[out_index++] = out_byte;
                     out_byte = 0;
                     out_bit = 0;
@@ -63,9 +65,9 @@ namespace gba::embed::bits {
             }
         }
 
-        if (x < width) throw "bdf: bitmap row is shorter than glyph width";
+        ::gba::bits::constexpr_assert(x < width, "bdf: bitmap row is shorter than glyph width");
         if (out_bit != 0) {
-            if (out_index >= stride) throw "bdf: packed row exceeds stride";
+            ::gba::bits::constexpr_assert(out_index >= stride, "bdf: packed row exceeds stride");
             dest[out_index] = out_byte;
         }
     }

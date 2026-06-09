@@ -2,6 +2,8 @@
 /// @brief Compile-time PNG pixel conversion (RGB, RGBA, indexed).
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/embed/png_chunks.hpp>
 #include <gba/color>
 
@@ -51,7 +53,7 @@ namespace gba::embed::bits {
     consteval void png_convert_indexed(const unsigned char* scanlines, unsigned int width, unsigned int height,
                                        const std::array<unsigned char, Size>& data, const png_chunk_info& info,
                                        gba::color* pixels, bool* transparent) {
-        if (info.plte_count == 0) throw "PNG: indexed image requires PLTE chunk";
+        ::gba::bits::constexpr_assert(info.plte_count == 0, "PNG: indexed image requires PLTE chunk");
         gba::color plte[256]{};
         for (unsigned int i = 0; i < info.plte_count && i < 256; ++i) {
             auto off = info.plte_offset + i * 3;

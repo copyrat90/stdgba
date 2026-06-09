@@ -33,7 +33,7 @@ namespace gba::codegen {
     /// @param n Slot position (0-31)
     /// @return imm_arg token for use in builder methods.
     consteval imm_arg imm_slot(const int n) {
-        bits::require(n >= 0 && n <= 31, "imm_slot: position out of range (0-31)");
+        ::gba::bits::constexpr_assert(!(n >= 0 && n <= 31), "imm_slot: position out of range (0-31)");
         return imm_arg{static_cast<std::uint8_t>(n)};
     }
 
@@ -41,7 +41,7 @@ namespace gba::codegen {
     /// @param n Slot position (0-31)
     /// @return s12_arg token for use in builder methods.
     consteval s12_arg s12_slot(const int n) {
-        bits::require(n >= 0 && n <= 31, "s12_slot: position out of range (0-31)");
+        ::gba::bits::constexpr_assert(!(n >= 0 && n <= 31), "s12_slot: position out of range (0-31)");
         return s12_arg{static_cast<std::uint8_t>(n)};
     }
 
@@ -49,7 +49,7 @@ namespace gba::codegen {
     /// @param n Slot position (0-31)
     /// @return b_arg token for use in builder methods.
     consteval b_arg b_slot(const int n) {
-        bits::require(n >= 0 && n <= 31, "b_slot: position out of range (0-31)");
+        ::gba::bits::constexpr_assert(!(n >= 0 && n <= 31), "b_slot: position out of range (0-31)");
         return b_arg{static_cast<std::uint8_t>(n)};
     }
 
@@ -57,7 +57,7 @@ namespace gba::codegen {
     /// @param n Slot position (0-31)
     /// @return instr_arg token for use in builder methods.
     consteval instr_arg instr_slot(const int n) {
-        bits::require(n >= 0 && n <= 31, "instr_slot: position out of range (0-31)");
+        ::gba::bits::constexpr_assert(!(n >= 0 && n <= 31), "instr_slot: position out of range (0-31)");
         return instr_arg{static_cast<std::uint8_t>(n)};
     }
 

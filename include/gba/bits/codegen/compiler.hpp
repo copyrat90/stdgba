@@ -28,8 +28,8 @@ namespace gba::codegen {
     consteval std::uint16_t reg_list(Regs... regs) {
         static_assert((std::is_same_v<Regs, arm_reg> && ...), "reg_list: all arguments must be arm_reg");
         const auto mask = (0u | ... | (1u << bits::reg_bits(regs)));
-        bits::require(mask != 0u, "reg_list: register list must not be empty");
-        bits::require(mask <= 0xFFFFu, "reg_list: register list out of range");
+        ::gba::bits::constexpr_assert(mask == 0u, "reg_list: register list must not be empty");
+        ::gba::bits::constexpr_assert(mask > 0xFFFFu, "reg_list: register list out of range");
         return static_cast<std::uint16_t>(mask);
     }
 
@@ -152,7 +152,7 @@ namespace gba::codegen {
         [[nodiscard]] constexpr std::size_t size_bytes() const noexcept { return count * sizeof(arm_word); }
 
         [[nodiscard]] constexpr arm_word operator[](const std::size_t index) const {
-            bits::require(index < count, "compiled_block: index out of bounds");
+            ::gba::bits::constexpr_assert(index >= count, "compiled_block: index out of bounds");
             return words[index];
         }
 
@@ -165,17 +165,17 @@ namespace gba::codegen {
         }
 
         [[nodiscard]] constexpr std::size_t patch_word_index(const std::size_t patch_index) const {
-            bits::require(patch_index < patch_count, "compiled_block: patch index out of bounds");
+            ::gba::bits::constexpr_assert(patch_index >= patch_count, "compiled_block: patch index out of bounds");
             return patches[patch_index].word_index;
         }
 
         [[nodiscard]] constexpr std::size_t patch_arg_index(const std::size_t patch_index) const {
-            bits::require(patch_index < patch_count, "compiled_block: patch index out of bounds");
+            ::gba::bits::constexpr_assert(patch_index >= patch_count, "compiled_block: patch index out of bounds");
             return patches[patch_index].arg_index;
         }
 
         [[nodiscard]] constexpr patch_kind patch_type(const std::size_t patch_index) const {
-            bits::require(patch_index < patch_count, "compiled_block: patch index out of bounds");
+            ::gba::bits::constexpr_assert(patch_index >= patch_count, "compiled_block: patch index out of bounds");
             return patches[patch_index].kind;
         }
 
@@ -877,15 +877,15 @@ namespace gba::codegen {
         }
 
         consteval void emit(const std::uint32_t word) {
-            bits::require(m_count < Capacity, "arm_macro_builder: instruction capacity exceeded");
+            ::gba::bits::constexpr_assert(m_count >= Capacity, "arm_macro_builder: instruction capacity exceeded");
             m_words[m_count++] = arm_word{word};
         }
 
         consteval std::uint8_t named_arg_index(const std::uint32_t hash) {
-            bits::require(hash != 0u, "arm_macro_builder: named arg hash must be nonzero");
+            ::gba::bits::constexpr_assert(hash == 0u, "arm_macro_builder: named arg hash must be nonzero");
 
             if (m_namedBase == 0xFFu) {
-                bits::require(m_argCount <= 32u, "arm_macro_builder: too many patch args");
+                ::gba::bits::constexpr_assert(m_argCount > 32u, "arm_macro_builder: too many patch args");
                 m_namedBase = static_cast<std::uint8_t>(m_argCount);
             }
 
@@ -895,9 +895,9 @@ namespace gba::codegen {
                 }
             }
 
-            bits::require(m_namedCount < 32u, "arm_macro_builder: too many named args");
+            ::gba::bits::constexpr_assert(m_namedCount >= 32u, "arm_macro_builder: too many named args");
             const auto idx = static_cast<std::uint8_t>(m_namedBase + m_namedCount);
-            bits::require(idx <= 31u, "arm_macro_builder: too many patch args (max 32)");
+            ::gba::bits::constexpr_assert(idx > 31u, "arm_macro_builder: too many patch args (max 32)");
 
             m_namedHashes[m_namedCount++] = hash;
             m_argHashes[idx] = hash;
@@ -908,9 +908,9 @@ namespace gba::codegen {
         }
 
         consteval void push_with_patch(const std::uint32_t word, const patch_kind kind, const std::uint8_t argIndex) {
-            bits::require(m_patchCount < Capacity, "arm_macro_builder: patch capacity exceeded");
-            bits::require(argIndex <= 31, "arm_macro_builder: patch arg out of range (0-31)");
-            bits::require(m_count < Capacity, "arm_macro_builder: instruction capacity exceeded");
+            ::gba::bits::constexpr_assert(m_patchCount >= Capacity, "arm_macro_builder: patch capacity exceeded");
+            ::gba::bits::constexpr_assert(argIndex > 31, "arm_macro_builder: patch arg out of range (0-31)");
+            ::gba::bits::constexpr_assert(m_count >= Capacity, "arm_macro_builder: instruction capacity exceeded");
 
             if (m_argHashes[argIndex] == 0u) {
                 m_argHashes[argIndex] = 0u;
@@ -1666,7 +1666,7 @@ namespace gba::codegen {
                     while (pos_cursor < actual_args && arg_hashes[pos_cursor] != 0u) {
                         ++pos_cursor;
                     }
-                    bits::require(pos_cursor < actual_args, "patcher: too many positional args");
+                    ::gba::bits::constexpr_assert(pos_cursor >= actual_args, "patcher: too many positional args");
                     vals[pos_cursor] = value;
                     filled[pos_cursor] = true;
                     ++pos_cursor;
@@ -1677,7 +1677,7 @@ namespace gba::codegen {
                     if constexpr (is_named_arg<arg_t>()) {
                         constexpr auto h = static_cast<std::uint32_t>(arg_t::hash);
                         const auto idx = find_named_index(h);
-                        bits::require(idx != static_cast<std::size_t>(-1), "patcher: unknown named arg provided");
+                        ::gba::bits::constexpr_assert(!(idx != static_cast<std::size_t>(-1)), "patcher: unknown named arg provided");
                         vals[idx] = normalize_arg(std::forward<decltype(a)>(a));
                         filled[idx] = true;
                     } else {
@@ -1688,7 +1688,7 @@ namespace gba::codegen {
                 (bind_one(std::forward<Args>(args)), ...);
 
                 for (std::size_t i = 0; i < actual_args; ++i) {
-                    bits::require(filled[i], "patcher: missing patch argument");
+                    ::gba::bits::constexpr_assert(!(filled[i]), "patcher: missing patch argument");
                 }
 
                 for (std::size_t i = 0; i < actual_patches; ++i) {
@@ -1696,23 +1696,23 @@ namespace gba::codegen {
                     const auto value = vals[p.arg_index];
                     switch (p.kind) {
                         case patch_kind::imm8:
-                            bits::require(value <= 0xFFu, "patcher: imm8 value out of range");
+                            ::gba::bits::constexpr_assert(value > 0xFFu, "patcher: imm8 value out of range");
                             dest[p.word_index] = p.base_word | value;
                             break;
                         case patch_kind::signed12: {
                             const auto sv = static_cast<std::int32_t>(value);
                             if (sv < 0) {
-                                bits::require(sv >= -4095, "patcher: signed12 value out of range");
+                                ::gba::bits::constexpr_assert(sv < -4095, "patcher: signed12 value out of range");
                                 dest[p.word_index] = p.base_word | static_cast<std::uint32_t>(-sv);
                             } else {
-                                bits::require(sv <= 4095, "patcher: signed12 value out of range");
+                                ::gba::bits::constexpr_assert(sv > 4095, "patcher: signed12 value out of range");
                                 dest[p.word_index] = p.base_word | 0x00800000u | static_cast<std::uint32_t>(sv);
                             }
                             break;
                         }
                         case patch_kind::branch_offset: {
                             const auto sv = static_cast<std::int32_t>(value);
-                            bits::require(sv >= -0x00800000 && sv <= 0x007FFFFF, "patcher: branch offset out of range");
+                            ::gba::bits::constexpr_assert(!(sv >= -0x00800000 && sv <= 0x007FFFFF), "patcher: branch offset out of range");
                             dest[p.word_index] = p.base_word | (value & 0x00FFFFFFu);
                             break;
                         }
@@ -1779,20 +1779,20 @@ namespace gba::codegen {
             const auto value = vals[ai];
 
             if constexpr (kind == patch_kind::imm8) {
-                bits::require(value <= 0xFFu, "block_patcher: imm8 value out of range");
+                ::gba::bits::constexpr_assert(value > 0xFFu, "block_patcher: imm8 value out of range");
                 dest[wi] = bw | value;
             } else if constexpr (kind == patch_kind::signed12) {
                 const auto sv = static_cast<std::int32_t>(value);
                 if (sv < 0) {
-                    bits::require(sv >= -4095, "block_patcher: signed12 value out of range");
+                    ::gba::bits::constexpr_assert(sv < -4095, "block_patcher: signed12 value out of range");
                     dest[wi] = bw | static_cast<std::uint32_t>(-sv);
                 } else {
-                    bits::require(sv <= 4095, "block_patcher: signed12 value out of range");
+                    ::gba::bits::constexpr_assert(sv > 4095, "block_patcher: signed12 value out of range");
                     dest[wi] = bw | 0x00800000u | static_cast<std::uint32_t>(sv);
                 }
             } else if constexpr (kind == patch_kind::branch_offset) {
                 const auto sv = static_cast<std::int32_t>(value);
-                bits::require(sv >= -0x00800000 && sv <= 0x007FFFFF, "block_patcher: branch offset out of range");
+                ::gba::bits::constexpr_assert(!(sv >= -0x00800000 && sv <= 0x007FFFFF), "block_patcher: branch offset out of range");
                 dest[wi] = bw | (value & 0x00FFFFFFu);
             } else {
                 dest[wi] = value;

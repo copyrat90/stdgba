@@ -1,5 +1,6 @@
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
 #include <gba/bits/angle/packed_angle.hpp>
 
 #include <numbers>
@@ -124,7 +125,7 @@ namespace gba::literals {
     /// Typically used only for special angle ratio calculations.
     [[nodiscard]]
     consteval angle_literal operator/(long double scalar, const angle_literal& rhs) noexcept {
-        if (rhs.turns == 0.0L) throw "division by zero angle";
+        ::gba::bits::constexpr_assert(rhs.turns == 0.0L, "division by zero angle");
         return {scalar / rhs.turns};
     }
 

@@ -2,6 +2,8 @@
 /// @brief Compile-time PNG scanline unfiltering (filter types 0-4 + Paeth predictor).
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <cstddef>
 
 namespace gba::embed::bits {
@@ -59,7 +61,7 @@ namespace gba::embed::bits {
                     }
                     break;
                 default:
-                    throw "PNG: unsupported filter type";
+                    ::gba::bits::constexpr_fail("PNG: unsupported filter type");
             }
         }
     }

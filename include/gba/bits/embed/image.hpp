@@ -2,6 +2,8 @@
 /// @brief Shared compile-time image dispatch helpers for embed.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/embed/common.hpp>
 #include <gba/bits/embed/png.hpp>
 #include <gba/bits/embed/ppm.hpp>
@@ -21,7 +23,7 @@ namespace gba::embed::bits {
         if (Size >= 18) {
             return parse_tga_header(data);
         }
-        throw "embed: unrecognized image format";
+        ::gba::bits::constexpr_fail("embed: unrecognized image format");
     }
 
     template<std::size_t Size>
@@ -74,7 +76,7 @@ namespace gba::embed::bits {
                 }
                 if (idx == 0) {
                     idx = ws.palette_count++;
-                    if (idx >= 256) throw "embed: image has more than 256 unique colors";
+                    ::gba::bits::constexpr_assert(idx >= 256, "embed: image has more than 256 unique colors");
                     ws.palette[idx] = c;
                 }
                 ws.indices[pi] = static_cast<unsigned char>(idx);

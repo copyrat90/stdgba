@@ -2,6 +2,8 @@
 /// @brief Compile-time PNG chunk scanner and streaming IDAT reader.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/embed/png_header.hpp>
 
 namespace gba::embed::bits {
@@ -37,7 +39,7 @@ namespace gba::embed::bits {
                 info.trns_offset = pos + 8;
                 info.trns_len = chunk_len;
             } else if (t0 == 'I' && t1 == 'D' && t2 == 'A' && t3 == 'T') {
-                if (info.idat_count >= 64) throw "PNG: too many IDAT chunks";
+                ::gba::bits::constexpr_assert(info.idat_count >= 64, "PNG: too many IDAT chunks");
                 info.idat[info.idat_count++] = {pos + 8, chunk_len};
                 info.idat_total += chunk_len;
             } else if (t0 == 'I' && t1 == 'E' && t2 == 'N' && t3 == 'D') {
@@ -45,7 +47,7 @@ namespace gba::embed::bits {
             }
             pos += 12 + chunk_len;
         }
-        if (info.idat_count == 0) throw "PNG: no IDAT data found";
+        ::gba::bits::constexpr_assert(info.idat_count == 0, "PNG: no IDAT data found");
         return info;
     }
 
@@ -67,14 +69,14 @@ namespace gba::embed::bits {
                 ++cur_span;
                 cur_offset = 0;
             }
-            throw "PNG deflate: unexpected end of IDAT stream";
+            ::gba::bits::constexpr_fail("PNG deflate: unexpected end of IDAT stream");
         }
 
         consteval void skip_zlib_header() {
             auto cmf = next_byte();
             auto flg = next_byte();
             static_cast<void>(flg);
-            if ((cmf & 0x0F) != 8) throw "PNG: zlib compression must be deflate";
+            ::gba::bits::constexpr_assert((cmf & 0x0F) != 8, "PNG: zlib compression must be deflate");
         }
 
         consteval void align_to_byte() {

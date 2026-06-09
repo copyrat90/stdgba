@@ -2,6 +2,8 @@
 /// @brief Static ECS registry with compile-time component list.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/ecs/entity.hpp>
 #include <gba/bits/ecs/group.hpp>
 #include <gba/bits/ecs/group_metadata.hpp>
@@ -29,7 +31,7 @@ namespace gba::ecs {
             for (std::size_t i = 0; i < sizeof...(Ts); ++i) {
                 if (matches[i]) return i;
             }
-            throw "component type not registered in this registry";
+            ::gba::bits::constexpr_fail("component type not registered in this registry");
         }
 
         /// @brief Extract component types from a flattened group.
@@ -303,7 +305,7 @@ namespace gba::ecs {
         /// (no runtime capacity check).
         [[nodiscard]] constexpr const entity create() {
             if consteval {
-                if (m_alive >= static_cast<std::uint8_t>(Capacity)) throw "registry::create: capacity exceeded";
+                ::gba::bits::constexpr_assert(m_alive >= static_cast<std::uint8_t>(Capacity), "registry::create: capacity exceeded");
             }
             const auto slot = allocate_slot();
             return entity(slot, m_gen[slot]);
@@ -325,7 +327,7 @@ namespace gba::ecs {
                               "create_emplace without values requires default-constructible components");
             }
             if consteval {
-                if (m_alive >= static_cast<std::uint8_t>(Capacity)) throw "registry::create_emplace: capacity exceeded";
+                ::gba::bits::constexpr_assert(m_alive >= static_cast<std::uint8_t>(Capacity), "registry::create_emplace: capacity exceeded");
             }
 
             const auto slot = allocate_slot();
@@ -342,7 +344,7 @@ namespace gba::ecs {
         /// @brief Destroy an entity, freeing its slot for reuse.
         constexpr void destroy(const entity e) {
             if consteval {
-                if (!valid(e)) throw "registry::destroy: invalid entity";
+                ::gba::bits::constexpr_assert(!valid(e), "registry::destroy: invalid entity");
             }
             const auto slot = e.slot;
             if constexpr (sizeof...(Components) <= 8) {
@@ -398,8 +400,8 @@ namespace gba::ecs {
         template<typename C, typename... Args>
         constexpr C& emplace(const entity e, Args&&... args) {
             if consteval {
-                if (!valid(e)) throw "registry::emplace: invalid entity";
-                if (m_mask[e.slot] & bit_of<C>) throw "registry::emplace: component already exists";
+                ::gba::bits::constexpr_assert(!valid(e), "registry::emplace: invalid entity");
+                ::gba::bits::constexpr_assert(m_mask[e.slot] & bit_of<C>, "registry::emplace: component already exists");
             }
             const auto slot = e.slot;
             m_mask[slot] |= bit_of<C>;
@@ -413,7 +415,7 @@ namespace gba::ecs {
         template<typename C>
         constexpr void remove(const entity e) {
             if consteval {
-                if (!valid(e)) throw "registry::remove: invalid entity";
+                ::gba::bits::constexpr_assert(!valid(e), "registry::remove: invalid entity");
             }
             m_mask[e.slot] &= ~bit_of<C>;
             --m_component_count[index_of<C>];

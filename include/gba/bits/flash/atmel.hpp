@@ -30,6 +30,8 @@
 /// @endcode
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/flash/operations.hpp>
 
 #include <array>
@@ -59,7 +61,7 @@ namespace gba::flash::atmel {
     /// @brief Create a runtime argument placeholder.
     /// @param n Argument position (0-based). Must be contiguous.
     consteval arg_type arg(int n) {
-        if (n < 0 || n > 7) throw "arg: position out of range (0-7)";
+        ::gba::bits::constexpr_assert(n < 0 || n > 7, "arg: position out of range (0-7)");
         return {static_cast<std::int8_t>(n)};
     }
 
@@ -80,33 +82,33 @@ namespace gba::flash::atmel {
 
     /// @brief Write a 128-byte page (compile-time constant).
     consteval cmd write_page(int page, write_fn fn) {
-        if (page < 0 || page >= pages_per_bank) throw "write_page: page index out of range (0-511)";
-        if (fn == nullptr) throw "write_page: write function must not be null";
+        ::gba::bits::constexpr_assert(page < 0 || page >= pages_per_bank, "write_page: page index out of range (0-511)");
+        ::gba::bits::constexpr_assert(fn == nullptr, "write_page: write function must not be null");
         return {cmd::write_page_k, static_cast<std::int16_t>(page), -1, fn, nullptr};
     }
 
     /// @brief Write a 128-byte page (runtime placeholder).
     consteval cmd write_page(arg_type a, write_fn fn) {
-        if (fn == nullptr) throw "write_page: write function must not be null";
+        ::gba::bits::constexpr_assert(fn == nullptr, "write_page: write function must not be null");
         return {cmd::write_page_k, 0, a.position, fn, nullptr};
     }
 
     /// @brief Read a 128-byte page (compile-time constant).
     consteval cmd read_page(int page, read_fn fn) {
-        if (page < 0 || page >= pages_per_bank) throw "read_page: page index out of range (0-511)";
-        if (fn == nullptr) throw "read_page: read function must not be null";
+        ::gba::bits::constexpr_assert(page < 0 || page >= pages_per_bank, "read_page: page index out of range (0-511)");
+        ::gba::bits::constexpr_assert(fn == nullptr, "read_page: read function must not be null");
         return {cmd::read_page_k, static_cast<std::int16_t>(page), -1, nullptr, fn};
     }
 
     /// @brief Read a 128-byte page (runtime placeholder).
     consteval cmd read_page(arg_type a, read_fn fn) {
-        if (fn == nullptr) throw "read_page: read function must not be null";
+        ::gba::bits::constexpr_assert(fn == nullptr, "read_page: read function must not be null");
         return {cmd::read_page_k, 0, a.position, nullptr, fn};
     }
 
     /// @brief Switch the active Flash bank (compile-time constant, 0 or 1).
     consteval cmd switch_bank(int bank) {
-        if (bank < 0 || bank > 1) throw "switch_bank: bank index out of range (0-1)";
+        ::gba::bits::constexpr_assert(bank < 0 || bank > 1, "switch_bank: bank index out of range (0-1)");
         return {cmd::switch_bank_k, static_cast<std::int16_t>(bank), -1, nullptr, nullptr};
     }
 
@@ -132,7 +134,7 @@ namespace gba::flash::atmel {
             if (max_arg < 0) return 0;
 
             for (std::int8_t j = 0; j <= max_arg; ++j) {
-                if (!used[j]) throw "arg indices must be contiguous starting from 0";
+                ::gba::bits::constexpr_assert(!used[j], "arg indices must be contiguous starting from 0");
             }
 
             return static_cast<std::size_t>(max_arg + 1);

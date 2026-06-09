@@ -2,6 +2,8 @@
 /// @brief Compile-time PPM (P6) header parsing.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/embed/common.hpp>
 
 namespace gba::embed::bits {
@@ -12,8 +14,8 @@ namespace gba::embed::bits {
         auto w = parse_uint(data.data(), Size, pos);
         auto h = parse_uint(data.data(), Size, pos);
         auto maxval = parse_uint(data.data(), Size, pos);
-        if (w == 0 || h == 0) throw "PPM: invalid dimensions";
-        if (maxval != 255) throw "PPM: only maxval 255 supported";
+        ::gba::bits::constexpr_assert(w == 0 || h == 0, "PPM: invalid dimensions");
+        ::gba::bits::constexpr_assert(maxval != 255, "PPM: only maxval 255 supported");
         if (pos < Size && is_ws(data[pos])) ++pos;
         return {w, h, pos, false, false, 0, 24, false, 0, 0, 0, 0};
     }

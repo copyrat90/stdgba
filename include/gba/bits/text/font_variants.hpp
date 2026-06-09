@@ -6,6 +6,8 @@
 /// eliminating runtime overhead.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/embed/bdf_types.hpp>
 
 #include <algorithm>
@@ -31,7 +33,7 @@ namespace gba::text::bits {
         const int max_y = std::max(static_cast<int>(old_g.height), static_cast<int>(old_g.height) + shadow_dy);
         const int new_w = max_x - min_x;
         const int new_h = max_y - min_y;
-        if (new_w <= 0 || new_h <= 0) throw "text font variant: invalid shadow-expanded glyph size";
+        ::gba::bits::constexpr_assert(new_w <= 0 || new_h <= 0, "text font variant: invalid shadow-expanded glyph size");
 
         const auto byte_width = static_cast<std::size_t>((new_w + 7) / 8);
         const auto bitmap_offset = total_offset;
@@ -51,7 +53,7 @@ namespace gba::text::bits {
         const auto& old_g, int thickness, std::size_t& total_offset) {
         const int new_w = static_cast<int>(old_g.width) + 2 * thickness;
         const int new_h = static_cast<int>(old_g.height) + 2 * thickness;
-        if (new_w <= 0 || new_h <= 0) throw "text font variant: invalid outline-expanded glyph size";
+        ::gba::bits::constexpr_assert(new_w <= 0 || new_h <= 0, "text font variant: invalid outline-expanded glyph size");
 
         const auto byte_width = static_cast<std::size_t>((new_w + 7) / 8);
         const auto bitmap_offset = total_offset;
@@ -266,7 +268,7 @@ namespace gba::text {
 
     template<int ShadowDX, int ShadowDY, typename FontType>
     consteval auto with_shadow(const FontType& base_font) {
-        if constexpr (ShadowDX == 0 && ShadowDY == 0) throw "text font variant: shadow offset cannot be 0,0";
+        if constexpr (ShadowDX == 0 && ShadowDY == 0) ::gba::bits::constexpr_fail("text font variant: shadow offset cannot be 0,0");
 
         using bits::expand_bounds_for_shadow;
         using bits::read_glyph_bit;
@@ -291,7 +293,7 @@ namespace gba::text {
             auto& new_g = result.glyphs[i];
 
             const auto expanded = expand_bounds_for_shadow(old_g, ShadowDX, ShadowDY, bitmap_offset);
-            if (bitmap_offset > result_type::bitmap_capacity) throw "text font variant: shadow bitmap capacity exceeded";
+            ::gba::bits::constexpr_assert(bitmap_offset > result_type::bitmap_capacity, "text font variant: shadow bitmap capacity exceeded");
 
             new_g.encoding = old_g.encoding;
             new_g.dwidth = old_g.dwidth;
@@ -349,7 +351,7 @@ namespace gba::text {
 
     template<int OutlineThickness, typename FontType>
     consteval auto with_outline(const FontType& base_font) {
-        if constexpr (OutlineThickness <= 0) throw "text font variant: outline thickness must be positive";
+        if constexpr (OutlineThickness <= 0) ::gba::bits::constexpr_fail("text font variant: outline thickness must be positive");
 
         using bits::expand_bounds_for_outline;
         using bits::read_glyph_bit;
@@ -372,7 +374,7 @@ namespace gba::text {
             const auto& old_g = base_font.glyphs[i];
             auto& new_g = result.glyphs[i];
             const auto expanded = expand_bounds_for_outline(old_g, OutlineThickness, bitmap_offset);
-            if (bitmap_offset > result_type::bitmap_capacity) throw "text font variant: outline bitmap capacity exceeded";
+            ::gba::bits::constexpr_assert(bitmap_offset > result_type::bitmap_capacity, "text font variant: outline bitmap capacity exceeded");
 
             new_g.encoding = old_g.encoding;
             new_g.dwidth = old_g.dwidth;

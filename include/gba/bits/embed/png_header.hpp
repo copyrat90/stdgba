@@ -2,6 +2,8 @@
 /// @brief Compile-time PNG signature check and IHDR parsing.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/color>
 
 #include <array>
@@ -38,23 +40,22 @@ namespace gba::embed::bits {
 
     template<std::size_t Size>
     consteval png_ihdr png_parse_ihdr(const std::array<unsigned char, Size>& data) {
-        if (Size < 33) throw "PNG: file too small for IHDR";
-        if (png_read_u32(data, 8) != 13) throw "PNG: IHDR chunk length must be 13";
-        if (!png_chunk_is(data, 12, 'I', 'H', 'D', 'R')) throw "PNG: first chunk must be IHDR";
+        ::gba::bits::constexpr_assert(Size < 33, "PNG: file too small for IHDR");
+        ::gba::bits::constexpr_assert(png_read_u32(data, 8) != 13, "PNG: IHDR chunk length must be 13");
+        ::gba::bits::constexpr_assert(!png_chunk_is(data, 12, 'I', 'H', 'D', 'R'), "PNG: first chunk must be IHDR");
 
         png_ihdr hdr{};
         hdr.width = png_read_u32(data, 16);
         hdr.height = png_read_u32(data, 20);
         hdr.bit_depth = data[24];
         hdr.color_type = data[25];
-        if (data[26] != 0) throw "PNG: unsupported compression method";
-        if (data[27] != 0) throw "PNG: unsupported filter method";
-        if (data[28] != 0) throw "PNG: interlaced images not supported";
+        ::gba::bits::constexpr_assert(data[26] != 0, "PNG: unsupported compression method");
+        ::gba::bits::constexpr_assert(data[27] != 0, "PNG: unsupported filter method");
+        ::gba::bits::constexpr_assert(data[28] != 0, "PNG: interlaced images not supported");
 
-        if (hdr.width == 0 || hdr.height == 0) throw "PNG: invalid dimensions";
-        if (hdr.bit_depth != 8) throw "PNG: only 8-bit depth supported";
-        if (hdr.color_type != 2 && hdr.color_type != 3 && hdr.color_type != 6)
-            throw "PNG: unsupported color type (only 2=RGB, 3=indexed, 6=RGBA)";
+        ::gba::bits::constexpr_assert(hdr.width == 0 || hdr.height == 0, "PNG: invalid dimensions");
+        ::gba::bits::constexpr_assert(hdr.bit_depth != 8, "PNG: only 8-bit depth supported");
+        ::gba::bits::constexpr_assert(hdr.color_type != 2 && hdr.color_type != 3 && hdr.color_type != 6, "PNG: unsupported color type (only 2=RGB, 3=indexed, 6=RGBA)");
 
         return hdr;
     }

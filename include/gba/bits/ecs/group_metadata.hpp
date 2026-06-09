@@ -2,6 +2,7 @@
 /// @brief Compile-time metadata for component groups.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
 #include <gba/bits/ecs/group.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -21,7 +22,7 @@ namespace gba::ecs {
             for (std::size_t i = 0; i < sizeof...(Ts); ++i) {
                 if (matches[i]) return i;
             }
-            throw "group_metadata: component type not registered";
+            ::gba::bits::constexpr_fail("group_metadata: component type not registered");
         }
     }
 

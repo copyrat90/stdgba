@@ -36,6 +36,8 @@
 /// @endcode
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/flash/operations.hpp>
 
 #include <array>
@@ -74,7 +76,7 @@ namespace gba::flash::standard {
     /// @brief Create a runtime argument placeholder.
     /// @param n Argument position (0-based). Must be unique and contiguous.
     consteval arg_type arg(int n) {
-        if (n < 0 || n > 7) throw "arg: position out of range (0-7)";
+        ::gba::bits::constexpr_assert(n < 0 || n > 7, "arg: position out of range (0-7)");
         return {static_cast<std::int8_t>(n)};
     }
 
@@ -104,7 +106,7 @@ namespace gba::flash::standard {
 
     /// @brief Erase a 4KB sector (compile-time constant).
     consteval cmd erase_sector(int sector) {
-        if (sector < 0 || sector >= sectors_per_bank) throw "erase_sector: sector index out of range (0-15)";
+        ::gba::bits::constexpr_assert(sector < 0 || sector >= sectors_per_bank, "erase_sector: sector index out of range (0-15)");
         return {cmd::erase_sector_k, static_cast<std::int8_t>(sector), -1, nullptr, nullptr};
     }
 
@@ -120,33 +122,33 @@ namespace gba::flash::standard {
 
     /// @brief Write a 4KB sector (compile-time constant).
     consteval cmd write_sector(int sector, write_fn fn) {
-        if (sector < 0 || sector >= sectors_per_bank) throw "write_sector: sector index out of range (0-15)";
-        if (fn == nullptr) throw "write_sector: write function must not be null";
+        ::gba::bits::constexpr_assert(sector < 0 || sector >= sectors_per_bank, "write_sector: sector index out of range (0-15)");
+        ::gba::bits::constexpr_assert(fn == nullptr, "write_sector: write function must not be null");
         return {cmd::write_sector_k, static_cast<std::int8_t>(sector), -1, fn, nullptr};
     }
 
     /// @brief Write a 4KB sector (runtime placeholder).
     consteval cmd write_sector(arg_type a, write_fn fn) {
-        if (fn == nullptr) throw "write_sector: write function must not be null";
+        ::gba::bits::constexpr_assert(fn == nullptr, "write_sector: write function must not be null");
         return {cmd::write_sector_k, 0, a.position, fn, nullptr};
     }
 
     /// @brief Read a 4KB sector (compile-time constant).
     consteval cmd read_sector(int sector, read_fn fn) {
-        if (sector < 0 || sector >= sectors_per_bank) throw "read_sector: sector index out of range (0-15)";
-        if (fn == nullptr) throw "read_sector: read function must not be null";
+        ::gba::bits::constexpr_assert(sector < 0 || sector >= sectors_per_bank, "read_sector: sector index out of range (0-15)");
+        ::gba::bits::constexpr_assert(fn == nullptr, "read_sector: read function must not be null");
         return {cmd::read_sector_k, static_cast<std::int8_t>(sector), -1, nullptr, fn};
     }
 
     /// @brief Read a 4KB sector (runtime placeholder).
     consteval cmd read_sector(arg_type a, read_fn fn) {
-        if (fn == nullptr) throw "read_sector: read function must not be null";
+        ::gba::bits::constexpr_assert(fn == nullptr, "read_sector: read function must not be null");
         return {cmd::read_sector_k, 0, a.position, nullptr, fn};
     }
 
     /// @brief Switch the active Flash bank (compile-time constant, 0 or 1).
     consteval cmd switch_bank(int bank) {
-        if (bank < 0 || bank > 1) throw "switch_bank: bank index out of range (0-1)";
+        ::gba::bits::constexpr_assert(bank < 0 || bank > 1, "switch_bank: bank index out of range (0-1)");
         return {cmd::switch_bank_k, static_cast<std::int8_t>(bank), -1, nullptr, nullptr};
     }
 
@@ -236,7 +238,7 @@ namespace gba::flash::standard {
             if (max_arg < 0) return 0;
 
             for (std::int8_t j = 0; j <= max_arg; j++) {
-                if (!used[j]) throw "arg indices must be contiguous starting from 0";
+                ::gba::bits::constexpr_assert(!used[j], "arg indices must be contiguous starting from 0");
             }
 
             return static_cast<std::size_t>(max_arg + 1);
@@ -339,8 +341,7 @@ namespace gba::flash::standard {
 
         result.num_args = bits::count_args(result.commands, result.count);
 
-        if (!bits::validate(result.commands, result.count))
-            throw "write_sector must be preceded by erase_sector or erase_chip";
+        ::gba::bits::constexpr_assert(!bits::validate(result.commands, result.count), "write_sector must be preceded by erase_sector or erase_chip");
 
         return result;
     }

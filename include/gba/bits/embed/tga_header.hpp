@@ -2,6 +2,8 @@
 /// @brief Compile-time TGA header parsing and per-pixel color/alpha decoding.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/embed/common.hpp>
 
 namespace gba::embed::bits {
@@ -18,18 +20,17 @@ namespace gba::embed::bits {
         unsigned int bpp = data[16];
         bool top = (data[17] & 0x20) != 0;
 
-        if (w == 0 || h == 0) throw "TGA: invalid dimensions";
+        ::gba::bits::constexpr_assert(w == 0 || h == 0, "TGA: invalid dimensions");
 
         bool is_cmap = (image_type == 1 || image_type == 9);
         bool is_true = (image_type == 2 || image_type == 10);
         bool is_gray = (image_type == 3 || image_type == 11);
-        if (!is_cmap && !is_true && !is_gray) throw "TGA: unsupported image type";
+        ::gba::bits::constexpr_assert(!is_cmap && !is_true && !is_gray, "TGA: unsupported image type");
 
-        if (is_cmap && cmap_type != 1) throw "TGA: color-mapped image requires color map";
-        if (is_true && bpp != 15 && bpp != 16 && bpp != 24 && bpp != 32)
-            throw "TGA: unsupported true-color bit depth";
-        if (is_gray && bpp != 8) throw "TGA: grayscale must be 8bpp";
-        if (is_cmap && bpp != 8 && bpp != 16) throw "TGA: color-mapped index must be 8 or 16 bpp";
+        ::gba::bits::constexpr_assert(is_cmap && cmap_type != 1, "TGA: color-mapped image requires color map");
+        ::gba::bits::constexpr_assert(is_true && bpp != 15 && bpp != 16 && bpp != 24 && bpp != 32, "TGA: unsupported true-color bit depth");
+        ::gba::bits::constexpr_assert(is_gray && bpp != 8, "TGA: grayscale must be 8bpp");
+        ::gba::bits::constexpr_assert(is_cmap && bpp != 8 && bpp != 16, "TGA: color-mapped index must be 8 or 16 bpp");
 
         std::size_t pixel_offset = 18 + id_length;
         unsigned int cmap_off = 0;

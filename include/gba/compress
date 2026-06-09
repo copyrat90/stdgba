@@ -48,6 +48,8 @@
 /// @see gba::BitUnPack
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bios>
 #include <gba/bits/min_heap.hpp>
 #include <gba/bits/ranges.hpp>
@@ -252,7 +254,7 @@ namespace gba {
             return params;
         }
 
-        throw "Unsupported destination bpp";
+        ::gba::bits::constexpr_fail("Unsupported destination bpp");
     }
 
     /// @brief Pack data to lower bit depth with automatic parameter detection.

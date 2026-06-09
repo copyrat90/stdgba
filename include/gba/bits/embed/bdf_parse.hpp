@@ -2,6 +2,8 @@
 /// @brief Internal BDF parser for gba::embed.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/embed/bdf_pack.hpp>
 #include <gba/bits/embed/bdf_types.hpp>
 
@@ -64,18 +66,18 @@ namespace gba::embed::bits {
     template<std::size_t N>
     consteval const unsigned char* line_after_prefix(bdf_line line, const char (&prefix)[N]) {
         static_assert(N > 0);
-        if (!line_starts_with(line, prefix)) throw "bdf: expected line prefix";
+        ::gba::bits::constexpr_assert(!line_starts_with(line, prefix), "bdf: expected line prefix");
         return line.data + (N - 1);
     }
 
     consteval const unsigned char* line_after_prefix(bdf_line line, const char* prefix) {
-        if (!line_starts_with(line, prefix)) throw "bdf: expected line prefix";
+        ::gba::bits::constexpr_assert(!line_starts_with(line, prefix), "bdf: expected line prefix");
         return line.data + cstrlen(prefix);
     }
 
     consteval unsigned int parse_next_uint(const unsigned char*& ptr, const unsigned char* end) {
         ptr = skip_bdf_ws(ptr, end);
-        if (ptr >= end || *ptr < '0' || *ptr > '9') throw "bdf: expected unsigned integer";
+        ::gba::bits::constexpr_assert(ptr >= end || *ptr < '0' || *ptr > '9', "bdf: expected unsigned integer");
 
         unsigned int value = 0;
         while (ptr < end && *ptr >= '0' && *ptr <= '9') {
@@ -87,7 +89,7 @@ namespace gba::embed::bits {
 
     consteval int parse_next_int(const unsigned char*& ptr, const unsigned char* end) {
         ptr = skip_bdf_ws(ptr, end);
-        if (ptr >= end) throw "bdf: expected signed integer";
+        ::gba::bits::constexpr_assert(ptr >= end, "bdf: expected signed integer");
 
         bool negative = false;
         if (*ptr == '-') {
@@ -95,7 +97,7 @@ namespace gba::embed::bits {
             ++ptr;
         }
 
-        if (ptr >= end || *ptr < '0' || *ptr > '9') throw "bdf: expected signed integer";
+        ::gba::bits::constexpr_assert(ptr >= end || *ptr < '0' || *ptr > '9', "bdf: expected signed integer");
 
         int value = 0;
         while (ptr < end && *ptr >= '0' && *ptr <= '9') {
@@ -208,7 +210,7 @@ namespace gba::embed::bits {
             }
         }
 
-        if (header.glyph_count == 0) throw "bdf: CHARS missing or zero";
+        ::gba::bits::constexpr_assert(header.glyph_count == 0, "bdf: CHARS missing or zero");
 
         if (header.ascent == 0 && header.descent == 0 && header.font_height != 0) {
             header.ascent = static_cast<unsigned int>(header.font_height + header.font_y);
@@ -267,7 +269,7 @@ namespace gba::embed::bits {
 
                 if (line_starts_with(line, "CHARS ")) {
                     header.glyph_count = parse_prefixed_uint(line, "CHARS ");
-                    if (header.glyph_count == 0) throw "bdf: CHARS missing or zero";
+                    ::gba::bits::constexpr_assert(header.glyph_count == 0, "bdf: CHARS missing or zero");
                     seen_chars = true;
                     continue;
                 }
@@ -285,8 +287,8 @@ namespace gba::embed::bits {
             }
         }
 
-        if (!seen_chars) throw "bdf: CHARS missing or zero";
-        if (seen_bbx != header.glyph_count) throw "bdf: CHARS count does not match parsed BBX blocks";
+        ::gba::bits::constexpr_assert(!seen_chars, "bdf: CHARS missing or zero");
+        ::gba::bits::constexpr_assert(seen_bbx != header.glyph_count, "bdf: CHARS count does not match parsed BBX blocks");
 
         if (header.ascent == 0 && header.descent == 0 && header.font_height != 0) {
             header.ascent = static_cast<unsigned int>(header.font_height + header.font_y);
@@ -390,8 +392,8 @@ namespace gba::embed::bits {
             }
 
             if (line_starts_with(line, "ENDCHAR")) {
-                if (glyph_index >= GlyphCount) throw "bdf: glyph count mismatch";
-                if (bitmap_row != current.height) throw "bdf: bitmap row count does not match BBX height";
+                ::gba::bits::constexpr_assert(glyph_index >= GlyphCount, "bdf: glyph count mismatch");
+                ::gba::bits::constexpr_assert(bitmap_row != current.height, "bdf: bitmap row count does not match BBX height");
 
                 result.glyphs[glyph_index++] = current;
                 bitmap_offset += current.bitmap_bytes();
@@ -401,7 +403,7 @@ namespace gba::embed::bits {
             }
 
             if (in_bitmap) {
-                if (bitmap_row >= current.height) throw "bdf: bitmap row count exceeds BBX height";
+                ::gba::bits::constexpr_assert(bitmap_row >= current.height, "bdf: bitmap row count exceeds BBX height");
 
                 pack_bdf_row(line, current.width,
                              result.bitmap.data() + current.bitmap_offset + bitmap_row * current.bitmap_byte_width,
@@ -411,8 +413,8 @@ namespace gba::embed::bits {
             }
         }
 
-        if (glyph_index != GlyphCount) throw "bdf: CHARS count does not match parsed glyphs";
-        if (bitmap_offset != BitmapBytes) throw "bdf: bitmap size mismatch";
+        ::gba::bits::constexpr_assert(glyph_index != GlyphCount, "bdf: CHARS count does not match parsed glyphs");
+        ::gba::bits::constexpr_assert(bitmap_offset != BitmapBytes, "bdf: bitmap size mismatch");
 
         return result;
     }

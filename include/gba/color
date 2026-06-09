@@ -19,6 +19,8 @@
 /// @endcode
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/peripherals>
 
 #include <cstddef>
@@ -97,7 +99,7 @@ namespace gba {
             if (c >= '0' && c <= '9') return c - '0';
             if (c >= 'a' && c <= 'f') return c - 'a' + 10;
             if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-            throw "invalid hex digit";
+            ::gba::bits::constexpr_fail("invalid hex digit");
         }
 
         /// @brief Convert two ASCII hex digits to a byte value.
@@ -113,7 +115,7 @@ namespace gba {
         /// @param len Length of the string (must be 7).
         /// @return Packed RGB as `(R << 16) | (G << 8) | B`.
         consteval unsigned int hex_to_rgb(const char* str, std::size_t len) {
-            if (len != 7 || str[0] != '#') throw "expected \"#RRGGBB\" format";
+            ::gba::bits::constexpr_assert(len != 7 || str[0] != '#', "expected \"#RRGGBB\" format");
             unsigned short r = hex_byte(str[1], str[2]);
             unsigned short g = hex_byte(str[3], str[4]);
             unsigned short b = hex_byte(str[5], str[6]);
@@ -271,7 +273,7 @@ namespace gba {
             if (name == "whitesmoke") return 0xF5F5F5;
             if (name == "yellowgreen") return 0x9ACD32;
             if (name == "yellow") return 0xFFFF00;
-            throw "unknown CSS color name";
+            ::gba::bits::constexpr_fail("unknown CSS color name");
         }
 
         /// @brief Convert a packed 24-bit RGB value to a `gba::color`.
@@ -313,7 +315,7 @@ namespace gba {
                 return bits::from_rgb(bits::css_color_to_rgb(view));
             }
 
-            throw "expected \"#RRGGBB\" or CSS color name";
+            ::gba::bits::constexpr_fail("expected \"#RRGGBB\" or CSS color name");
         }
 
     } // namespace literals

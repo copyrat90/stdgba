@@ -13,6 +13,8 @@
 /// - Filter type and color type dispatched outside inner pixel loops
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/embed/png_convert.hpp>
 #include <gba/bits/embed/png_deflate.hpp>
 #include <gba/bits/embed/png_filter.hpp>
@@ -32,7 +34,7 @@ namespace gba::embed::bits {
 
         unsigned char scanlines[raw_size];
         auto inflated = deflate_inflate(reader, scanlines, raw_size);
-        if (inflated != raw_size) throw "PNG: inflated size does not match expected scanline data";
+        ::gba::bits::constexpr_assert(inflated != raw_size, "PNG: inflated size does not match expected scanline data");
         png_unfilter(scanlines, width, height, bpp_bytes);
         if (color_type == 2) {
             bool has_trns = false;

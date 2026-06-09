@@ -268,8 +268,8 @@ namespace gba::embed {
         static constexpr auto oversized = [&supplier] consteval {
             const auto raw = supplier();
             const auto hdr = bits::parse_header(raw);
-            if (hdr.width % 8 != 0) throw "embed: image width must be a multiple of 8";
-            if (hdr.height % 8 != 0) throw "embed: image height must be a multiple of 8";
+            ::gba::bits::constexpr_assert(hdr.width % 8 != 0, "embed: image width must be a multiple of 8");
+            ::gba::bits::constexpr_assert(hdr.height % 8 != 0, "embed: image height must be a multiple of 8");
             const auto ws = bits::build_indexed<buf_size>(raw, hdr);
             const auto tw_val = hdr.width / 8;
             const auto th_val = hdr.height / 8;
@@ -327,7 +327,7 @@ namespace gba::embed {
                             }
                             if (!seen) {
                                 if (tile_color_count >= 15) {
-                                    throw "embed::indexed4: tile uses more than 15 opaque colors";
+                                    ::gba::bits::constexpr_fail("embed::indexed4: tile uses more than 15 opaque colors");
                                 }
                                 tile_colors[tile_color_count++] = idx;
                             }
@@ -352,7 +352,7 @@ namespace gba::embed {
 
                     if (tile_bank == 16) {
                         if (bank_count >= 16) {
-                            throw "embed::indexed4: image requires more than 16 palette banks";
+                            ::gba::bits::constexpr_fail("embed::indexed4: image requires more than 16 palette banks");
                         }
                         tile_bank = bank_count++;
                         init_bank(tile_bank);
@@ -361,7 +361,7 @@ namespace gba::embed {
                     for (unsigned int i = 0; i < tile_color_count; ++i) {
                         if (find_in_bank(tile_bank, ws.palette[tile_colors[i]]) == 0) {
                             if (bank_used[tile_bank] >= 16) {
-                                throw "embed::indexed4: selected palette bank overflow";
+                                ::gba::bits::constexpr_fail("embed::indexed4: selected palette bank overflow");
                             }
                             bank_palette[tile_bank][bank_used[tile_bank]++] = ws.palette[tile_colors[i]];
                         }
@@ -378,7 +378,7 @@ namespace gba::embed {
                             if (idx != 0) {
                                 local_idx = find_in_bank(tile_bank, ws.palette[idx]);
                                 if (local_idx == 0) {
-                                    throw "embed::indexed4: internal palette bank mapping failed";
+                                    ::gba::bits::constexpr_fail("embed::indexed4: internal palette bank mapping failed");
                                 }
                             }
                             word |= (local_idx & 0xFu) << (col * 4);
@@ -504,8 +504,8 @@ namespace gba::embed {
         static constexpr auto oversized = [&supplier] consteval {
             const auto raw = supplier();
             const auto hdr = bits::parse_header(raw);
-            if (hdr.width % 8 != 0) throw "embed: image width must be a multiple of 8";
-            if (hdr.height % 8 != 0) throw "embed: image height must be a multiple of 8";
+            ::gba::bits::constexpr_assert(hdr.width % 8 != 0, "embed: image width must be a multiple of 8");
+            ::gba::bits::constexpr_assert(hdr.height % 8 != 0, "embed: image height must be a multiple of 8");
             const auto ws = bits::build_indexed<buf_size>(raw, hdr);
             const auto tw_val = hdr.width / 8;
             const auto th_val = hdr.height / 8;
@@ -615,8 +615,8 @@ namespace gba::embed {
                 if (c >= '0' && c <= '9') idx = c - '0';
                 else if (c >= 'a' && c <= 'z') idx = 10 + (c - 'a');
                 else if (c >= 'A' && c <= 'Z') idx = 10 + (c - 'A');
-                else throw "embed::sheet4: invalid character in row sequence string";
-                if (idx >= FrameCountInRow) throw "embed::sheet4: frame index out of range for row";
+                else ::gba::bits::constexpr_fail("embed::sheet4: invalid character in row sequence string");
+                ::gba::bits::constexpr_assert(idx >= FrameCountInRow, "embed::sheet4: frame index out of range for row");
                 result.frames[i] = RowStart + idx;
             }
             return result;
@@ -711,8 +711,8 @@ namespace gba::embed {
                 if (c >= '0' && c <= '9') idx = c - '0';
                 else if (c >= 'a' && c <= 'z') idx = 10 + (c - 'a');
                 else if (c >= 'A' && c <= 'Z') idx = 10 + (c - 'A');
-                else throw "embed::sheet4: invalid character in sequence string";
-                if (idx >= frame_count) throw "embed::sheet4: frame index out of range in sequence";
+                else ::gba::bits::constexpr_fail("embed::sheet4: invalid character in sequence string");
+                ::gba::bits::constexpr_assert(idx >= frame_count, "embed::sheet4: frame index out of range in sequence");
                 result.frames[i] = idx;
             }
             return result;
@@ -779,8 +779,8 @@ namespace gba::embed {
             const auto raw = supplier();
             const auto hdr = bits::parse_header(raw);
 
-            if (hdr.width % FrameW != 0) throw "indexed4_sheet: image width is not a multiple of frame width";
-            if (hdr.height % FrameH != 0) throw "indexed4_sheet: image height is not a multiple of frame height";
+            ::gba::bits::constexpr_assert(hdr.width % FrameW != 0, "indexed4_sheet: image width is not a multiple of frame width");
+            ::gba::bits::constexpr_assert(hdr.height % FrameH != 0, "indexed4_sheet: image height is not a multiple of frame height");
 
             const auto cols = hdr.width / FrameW;
             const auto rows = hdr.height / FrameH;
@@ -821,7 +821,7 @@ namespace gba::embed {
                     }
                 }
                 if (!found) {
-                    if (r.pal_count >= 16) throw "indexed4_sheet: sprite sheet has more than 15 opaque colors";
+                    ::gba::bits::constexpr_assert(r.pal_count >= 16, "indexed4_sheet: sprite sheet has more than 15 opaque colors");
                     r.palette[r.pal_count++] = c;
                 }
             }

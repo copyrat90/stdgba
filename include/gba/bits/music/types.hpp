@@ -6,6 +6,8 @@
 /// All types are constexpr/consteval - no runtime overhead.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <array>
 #include <cstdint>
 #include <numeric>
@@ -113,7 +115,7 @@ namespace gba::music {
 
         /// @brief Cycles per second: `1_cps` = 1 cycle/sec.
         consteval tempo operator""_cps(unsigned long long v) {
-            if (v == 0) throw "cps: cycles per second must be > 0";
+            ::gba::bits::constexpr_assert(v == 0, "cps: cycles per second must be > 0");
             return tempo{
                 rational{static_cast<std::int64_t>(v), 1}
             };
@@ -121,7 +123,7 @@ namespace gba::music {
 
         /// @brief Cycles per second (fractional): `0.5_cps` = default Strudel tempo.
         consteval tempo operator""_cps(long double v) {
-            if (v <= 0.0L) throw "cps: cycles per second must be > 0";
+            ::gba::bits::constexpr_assert(v <= 0.0L, "cps: cycles per second must be > 0");
             // Convert to rational with millionths precision then reduce via GCD.
             auto num = static_cast<std::int64_t>(v * 1000000.0L);
             return tempo{
@@ -131,7 +133,7 @@ namespace gba::music {
 
         /// @brief Cycles per minute: `30_cpm` = 0.5 cps.
         consteval tempo operator""_cpm(unsigned long long v) {
-            if (v == 0) throw "cpm: cycles per minute must be > 0";
+            ::gba::bits::constexpr_assert(v == 0, "cpm: cycles per minute must be > 0");
             return tempo{
                 rational{static_cast<std::int64_t>(v), 60}
             };
@@ -139,7 +141,7 @@ namespace gba::music {
 
         /// @brief Beats per minute (assumes 4 beats/cycle): `120_bpm` = 0.5 cps.
         consteval tempo operator""_bpm(unsigned long long v) {
-            if (v == 0) throw "bpm: beats per minute must be > 0";
+            ::gba::bits::constexpr_assert(v == 0, "bpm: beats per minute must be > 0");
             return tempo{
                 rational{static_cast<std::int64_t>(v), 240}
             };
@@ -436,10 +438,10 @@ namespace gba::music {
     /// Rejects octave-1 notes (C1-B1) at compile time because the GBA square-wave
     /// hardware cannot represent frequencies below ~64 Hz. Use C2 or higher.
     consteval std::uint16_t note_to_rate(note n) {
-        if (!is_chromatic(n)) throw "note_to_rate: not a chromatic note";
+        ::gba::bits::constexpr_assert(!is_chromatic(n), "note_to_rate: not a chromatic note");
         if (n < note::c2)
-            throw "note_to_rate: octave-1 notes (C1-B1) are below the GBA PSG hardware floor (~64 Hz) - use C2 or "
-                  "higher";
+            ::gba::bits::constexpr_fail("note_to_rate: octave-1 notes (C1-B1) are below the GBA PSG hardware floor (~64 Hz) - use C2 or "
+                  "higher");
         return note_rate_table[static_cast<int>(n) - static_cast<int>(first_chromatic)];
     }
 
@@ -547,7 +549,7 @@ namespace gba::music {
 
     /// @brief Get noise drum preset for a drum note.
     consteval const drum_preset& note_to_drum(note n) {
-        if (!is_drum(n)) throw "note_to_drum: not a drum note";
+        ::gba::bits::constexpr_assert(!is_drum(n), "note_to_drum: not a drum note");
         return drum_preset_table[static_cast<int>(n) - static_cast<int>(first_drum)];
     }
 
@@ -722,9 +724,9 @@ namespace gba::music {
         /// normalization (useful for hand-picked windows).
         consteval wav_instrument parse_wav(const std::uint8_t* data, std::size_t N, std::uint8_t volume,
                                            std::size_t max_samples) {
-            if (N < 44) throw "wav_embed: file too small for WAV header";
-            if (!tag_eq(data, 'R', 'I', 'F', 'F')) throw "wav_embed: not a RIFF file";
-            if (!tag_eq(data + 8, 'W', 'A', 'V', 'E')) throw "wav_embed: not a WAVE file";
+            ::gba::bits::constexpr_assert(N < 44, "wav_embed: file too small for WAV header");
+            ::gba::bits::constexpr_assert(!tag_eq(data, 'R', 'I', 'F', 'F'), "wav_embed: not a RIFF file");
+            ::gba::bits::constexpr_assert(!tag_eq(data + 8, 'W', 'A', 'V', 'E'), "wav_embed: not a WAVE file");
 
             // Walk chunks to find fmt and data
             std::uint16_t audio_format = 0;
@@ -738,11 +740,11 @@ namespace gba::music {
                 auto chunk_size = static_cast<std::size_t>(read_u32(data + pos + 4));
 
                 if (tag_eq(data + pos, 'f', 'm', 't', ' ')) {
-                    if (pos + 24 > N) throw "wav_embed: fmt chunk truncated";
+                    ::gba::bits::constexpr_assert(pos + 24 > N, "wav_embed: fmt chunk truncated");
                     audio_format = read_u16(data + pos + 8);
                     channels = read_u16(data + pos + 10);
                     bits_per_sample = read_u16(data + pos + 22);
-                    if (audio_format != 1) throw "wav_embed: only PCM format (1) is supported";
+                    ::gba::bits::constexpr_assert(audio_format != 1, "wav_embed: only PCM format (1) is supported");
                 }
 
                 if (tag_eq(data + pos, 'd', 'a', 't', 'a')) {
@@ -755,14 +757,13 @@ namespace gba::music {
                 if (chunk_size % 2) pos++; // RIFF pad byte
             }
 
-            if (data_start == 0) throw "wav_embed: data chunk not found";
-            if (channels == 0 || channels > 2) throw "wav_embed: only mono or stereo supported";
-            if (bits_per_sample != 8 && bits_per_sample != 16)
-                throw "wav_embed: only 8-bit or 16-bit samples supported";
+            ::gba::bits::constexpr_assert(data_start == 0, "wav_embed: data chunk not found");
+            ::gba::bits::constexpr_assert(channels == 0 || channels > 2, "wav_embed: only mono or stereo supported");
+            ::gba::bits::constexpr_assert(bits_per_sample != 8 && bits_per_sample != 16, "wav_embed: only 8-bit or 16-bit samples supported");
 
             std::size_t bytes_per_frame = (bits_per_sample / 8) * channels;
             std::size_t total_frames = data_size / bytes_per_frame;
-            if (total_frames == 0) throw "wav_embed: no samples in data chunk";
+            ::gba::bits::constexpr_assert(total_frames == 0, "wav_embed: no samples in data chunk");
 
             // Determine the source window to resample
             std::size_t win_start = 0;
@@ -908,7 +909,7 @@ namespace gba::music {
     };
 
     consteval parse_note_result parse_note_name(const char* str, std::size_t pos, std::size_t end) {
-        if (pos >= end) throw "parse_note_name: unexpected end of input";
+        ::gba::bits::constexpr_assert(pos >= end, "parse_note_name: unexpected end of input");
 
         // Rest
         if (str[pos] == '~') return {note::rest, 1};
@@ -966,7 +967,7 @@ namespace gba::music {
 
         // Pitched note: letter [#/s/b] octave
         char letter = str[pos];
-        if (letter < 'a' || letter > 'g') throw "parse_note_name: expected note letter a-g";
+        ::gba::bits::constexpr_assert(letter < 'a' || letter > 'g', "parse_note_name: expected note letter a-g");
 
         // Semitone offsets: c=0, d=2, e=4, f=5, g=7, a=9, b=11
         constexpr int offsets[] = {9, 11, 0, 2, 4, 5, 7}; // a=9,b=11,c=0,d=2,e=4,f=5,g=7
@@ -1032,10 +1033,10 @@ namespace gba::music {
             octave--;
         }
 
-        if (octave < 1 || octave > 8) throw "parse_note_name: octave out of range (1-8)";
+        ::gba::bits::constexpr_assert(octave < 1 || octave > 8, "parse_note_name: octave out of range (1-8)");
 
         int index = (octave - 1) * 12 + semitone;
-        if (index < 0 || index >= 96) throw "parse_note_name: note out of PSG range";
+        ::gba::bits::constexpr_assert(index < 0 || index >= 96, "parse_note_name: note out of PSG range");
 
         auto result = static_cast<note>(static_cast<int>(first_chromatic) + index);
         return {result, consumed};

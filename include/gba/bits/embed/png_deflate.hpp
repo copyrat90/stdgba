@@ -6,6 +6,8 @@
 /// for O(n) table construction instead of O(n × max_bits).
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/bits/embed/png_chunks.hpp>
 
 namespace gba::embed::bits {
@@ -112,7 +114,7 @@ namespace gba::embed::bits {
                 }
             }
         }
-        throw "PNG deflate: invalid Huffman code";
+        ::gba::bits::constexpr_fail("PNG deflate: invalid Huffman code");
     }
 
     template<typename Reader>
@@ -136,7 +138,7 @@ namespace gba::embed::bits {
             if (sym < 16) {
                 all_lengths[pos++] = sym;
             } else if (sym == 16) {
-                if (pos == 0) throw "PNG deflate: repeat without previous length";
+                ::gba::bits::constexpr_assert(pos == 0, "PNG deflate: repeat without previous length");
                 auto repeat = deflate_read_bits(r, 2) + 3;
                 auto prev = all_lengths[pos - 1];
                 for (unsigned int i = 0; i < repeat && pos < total; ++i) all_lengths[pos++] = prev;
@@ -147,7 +149,7 @@ namespace gba::embed::bits {
                 auto repeat = deflate_read_bits(r, 7) + 11;
                 for (unsigned int i = 0; i < repeat && pos < total; ++i) all_lengths[pos++] = 0;
             } else {
-                throw "PNG deflate: invalid code length symbol";
+                ::gba::bits::constexpr_fail("PNG deflate: invalid code length symbol");
             }
         }
 
@@ -173,9 +175,9 @@ namespace gba::embed::bits {
                 unsigned int nlen_lo = r.next_byte();
                 unsigned int nlen_hi = r.next_byte();
                 unsigned int nlen = nlen_lo | (nlen_hi << 8);
-                if ((len ^ 0xFFFFu) != nlen) throw "PNG deflate: stored block LEN/NLEN mismatch";
+                ::gba::bits::constexpr_assert((len ^ 0xFFFFu) != nlen, "PNG deflate: stored block LEN/NLEN mismatch");
                 for (unsigned int i = 0; i < len; ++i) {
-                    if (out_pos >= dst_cap) throw "PNG deflate: output buffer overflow";
+                    ::gba::bits::constexpr_assert(out_pos >= dst_cap, "PNG deflate: output buffer overflow");
                     dst[out_pos++] = r.next_byte();
                 }
             } else if (btype == 1 || btype == 2) {
@@ -191,7 +193,7 @@ namespace gba::embed::bits {
                     auto sym = deflate_decode_symbol(r, lit_h);
                     if (sym == 256) break;
                     if (sym < 256) {
-                        if (out_pos >= dst_cap) throw "PNG deflate: output buffer overflow";
+                        ::gba::bits::constexpr_assert(out_pos >= dst_cap, "PNG deflate: output buffer overflow");
                         dst[out_pos++] = static_cast<unsigned char>(sym);
                     } else {
                         auto extra = deflate_length_extra(sym);
@@ -199,16 +201,16 @@ namespace gba::embed::bits {
                         auto dist_sym = deflate_decode_symbol(r, dist_h);
                         auto dextra = deflate_dist_extra(dist_sym);
                         auto distance = deflate_dist_base(dist_sym) + deflate_read_bits(r, dextra);
-                        if (distance > out_pos) throw "PNG deflate: back reference before start";
+                        ::gba::bits::constexpr_assert(distance > out_pos, "PNG deflate: back reference before start");
                         for (unsigned int i = 0; i < length; ++i) {
-                            if (out_pos >= dst_cap) throw "PNG deflate: output buffer overflow";
+                            ::gba::bits::constexpr_assert(out_pos >= dst_cap, "PNG deflate: output buffer overflow");
                             dst[out_pos] = dst[out_pos - distance];
                             ++out_pos;
                         }
                     }
                 }
             } else {
-                throw "PNG deflate: invalid block type 3";
+                ::gba::bits::constexpr_fail("PNG deflate: invalid block type 3");
             }
         }
         return out_pos;

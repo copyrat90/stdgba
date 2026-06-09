@@ -7,6 +7,8 @@
 /// compiler diagnostics instead of runtime std::expected checks.
 #pragma once
 
+#include <gba/bits/constexpr_assert.hpp>
+
 #include <gba/peripherals>
 
 #include <array>
@@ -77,7 +79,7 @@ namespace gba {
                                              std::size_t cascadeTimers) {
             compiled_timer result{};
 
-            if (total <= 0) throw "duration must be positive";
+            ::gba::bits::constexpr_assert(total <= 0, "duration must be positive");
 
             if (total < 0x10000) {
                 result.m_count = 1;
@@ -87,7 +89,7 @@ namespace gba {
                 return result;
             }
 
-            if (cascadeTimers < 1) throw "duration requires more cascade timers than available";
+            ::gba::bits::constexpr_assert(cascadeTimers < 1, "duration requires more cascade timers than available");
 
             auto cascade1 = total / 0x10000;
             auto base = total - cascade1 * 0x10000;
@@ -103,7 +105,7 @@ namespace gba {
                 return result;
             }
 
-            if (cascadeTimers < 2) throw "duration requires more cascade timers than available";
+            ::gba::bits::constexpr_assert(cascadeTimers < 2, "duration requires more cascade timers than available");
 
             auto cascade2 = cascade1 / 0x10000;
             cascade1 = cascade1 - cascade2 * 0x10000;
@@ -122,7 +124,7 @@ namespace gba {
                 return result;
             }
 
-            if (cascadeTimers < 3) throw "duration requires more cascade timers than available";
+            ::gba::bits::constexpr_assert(cascadeTimers < 3, "duration requires more cascade timers than available");
 
             auto cascade3 = cascade2 / 0x10000;
             cascade2 = cascade2 - cascade3 * 0x10000;
@@ -144,7 +146,7 @@ namespace gba {
                 return result;
             }
 
-            throw "duration requires more cascade timers than available";
+            ::gba::bits::constexpr_fail("duration requires more cascade timers than available");
         }
 
         /// @brief Select best prescaler and build compiled_timer.
@@ -200,7 +202,7 @@ namespace gba {
                 }
             }
 
-            if (bestDiff < 0) throw "duration too short to represent with any prescaler";
+            ::gba::bits::constexpr_assert(bestDiff < 0, "duration too short to represent with any prescaler");
 
             return build_timer(bestCount, bestPrescaler, irq, extraTimers);
         }
@@ -241,7 +243,7 @@ namespace gba {
                 return build_timer(c.count(), cycles_1, irq, extraTimers);
             }
 
-            throw "duration cannot be exactly represented with any prescaler";
+            ::gba::bits::constexpr_fail("duration cannot be exactly represented with any prescaler");
         }
 
         /// @brief Build compiled_timer from explicit prescaled cycles.

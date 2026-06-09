@@ -2,7 +2,7 @@
 /// @brief Consteval mini-notation lexer and recursive-descent parser.
 ///
 /// Parses Strudel mini-notation at compile time into a constexpr AST.
-/// Invalid syntax produces a throw inside consteval -> compiler diagnostic.
+/// Invalid syntax produces an immediate compile-time diagnostic.
 ///
 /// Supported operators (Strudel parity minus randomness):
 ///   sequence:     "a b c"
@@ -19,6 +19,8 @@
 ///   euclidean:    "a(3,8)" or "a(3,8,2)"
 ///   comma:        "a , b" (parallel within braces or angle brackets)
 #pragma once
+
+#include <gba/bits/constexpr_assert.hpp>
 
 #include <gba/bits/music/types.hpp>
 
@@ -86,7 +88,7 @@ namespace gba::music {
         std::uint16_t root{}; ///< Index of the root node.
 
         consteval std::uint16_t add_node(ast_node node) {
-            if (node_count >= max_ast_nodes) throw "parsed_pattern: too many AST nodes";
+            ::gba::bits::constexpr_assert(node_count >= max_ast_nodes, "parsed_pattern: too many AST nodes");
             auto idx = node_count++;
             nodes[idx] = node;
             return idx;
@@ -94,7 +96,7 @@ namespace gba::music {
 
         consteval void add_child(std::uint16_t parent, std::uint16_t child, std::uint8_t weight = 1) {
             auto& p = nodes[parent];
-            if (p.child_count >= max_children) throw "parsed_pattern: too many children per node";
+            ::gba::bits::constexpr_assert(p.child_count >= max_children, "parsed_pattern: too many children per node");
             p.children[p.child_count] = child;
             p.weights[p.child_count] = weight;
             p.child_count++;
@@ -117,7 +119,7 @@ namespace gba::music {
         }
 
         consteval int parse_int(const char* str, std::size_t& pos, std::size_t end) {
-            if (pos >= end || !is_digit(str[pos])) throw "parse_int: expected digit";
+            ::gba::bits::constexpr_assert(pos >= end || !is_digit(str[pos]), "parse_int: expected digit");
             int result = 0;
             while (pos < end && is_digit(str[pos])) {
                 result = result * 10 + (str[pos] - '0');
@@ -134,7 +136,7 @@ namespace gba::music {
         };
 
         consteval parsed_number parse_number(const char* str, std::size_t& pos, std::size_t end) {
-            if (pos >= end || !is_digit(str[pos])) throw "parse_number: expected digit";
+            ::gba::bits::constexpr_assert(pos >= end || !is_digit(str[pos]), "parse_number: expected digit");
             int integer_part = 0;
             while (pos < end && is_digit(str[pos])) {
                 integer_part = integer_part * 10 + (str[pos] - '0');
@@ -142,7 +144,7 @@ namespace gba::music {
             }
             if (pos < end && str[pos] == '.') {
                 pos++; // skip '.'
-                if (pos >= end || !is_digit(str[pos])) throw "parse_number: expected digit after decimal point";
+                ::gba::bits::constexpr_assert(pos >= end || !is_digit(str[pos]), "parse_number: expected digit after decimal point");
                 int frac_num = 0;
                 int frac_den = 1;
                 while (pos < end && is_digit(str[pos])) {
@@ -164,10 +166,10 @@ namespace gba::music {
                     num /= a;
                     den /= a;
                 }
-                if (num > 65535 || den > 65535) throw "parse_number: value too large for uint16_t rational";
+                ::gba::bits::constexpr_assert(num > 65535 || den > 65535, "parse_number: value too large for uint16_t rational");
                 return {static_cast<std::uint16_t>(num), static_cast<std::uint16_t>(den)};
             }
-            if (integer_part > 65535) throw "parse_number: value too large";
+            ::gba::bits::constexpr_assert(integer_part > 65535, "parse_number: value too large");
             return {static_cast<std::uint16_t>(integer_part), 1};
         }
 
@@ -189,7 +191,7 @@ namespace gba::music {
         consteval std::uint16_t parse_timeline_values(const char* str, std::size_t& pos, std::size_t end,
                                                       parsed_pattern& pat) {
             // Expects: <N M ...> where N, M are integers
-            if (pos >= end || str[pos] != '<') throw "parse_timeline_values: expected '<'";
+            ::gba::bits::constexpr_assert(pos >= end || str[pos] != '<', "parse_timeline_values: expected '<'");
             pos++; // skip '<'
 
             ast_node alt{};
@@ -199,8 +201,8 @@ namespace gba::music {
             skip_spaces(str, pos, end);
             while (pos < end && str[pos] != '>') {
                 int val = parse_int(str, pos, end);
-                if (val <= 0) throw "parse_timeline_values: values must be > 0";
-                if (val > 255) throw "parse_timeline_values: value out of range (1-255)";
+                ::gba::bits::constexpr_assert(val <= 0, "parse_timeline_values: values must be > 0");
+                ::gba::bits::constexpr_assert(val > 255, "parse_timeline_values: value out of range (1-255)");
                 // Store each value as a note_literal node (reusing note_value as integer storage)
                 ast_node valNode{};
                 valNode.type = ast_type::note_literal;
@@ -209,7 +211,7 @@ namespace gba::music {
                 pat.add_child(altIdx, valIdx);
                 skip_spaces(str, pos, end);
             }
-            if (pos >= end || str[pos] != '>') throw "parse_timeline_values: expected '>'";
+            ::gba::bits::constexpr_assert(pos >= end || str[pos] != '>', "parse_timeline_values: expected '>'");
             pos++; // skip '>'
             return altIdx;
         }
@@ -217,7 +219,7 @@ namespace gba::music {
 
         consteval std::uint16_t parse_atom(const char* str, std::size_t& pos, std::size_t end, parsed_pattern& pat) {
             skip_spaces(str, pos, end);
-            if (pos >= end) throw "parse_atom: unexpected end of input";
+            ::gba::bits::constexpr_assert(pos >= end, "parse_atom: unexpected end of input");
 
             char c = str[pos];
 
@@ -260,12 +262,12 @@ namespace gba::music {
                         pat.add_child(stackIdx, nextSeq);
                     }
 
-                    if (pos >= end || str[pos] != ']') throw "parse_atom: expected ']'";
+                    ::gba::bits::constexpr_assert(pos >= end || str[pos] != ']', "parse_atom: expected ']'");
                     pos++; // skip ']'
                     return stackIdx;
                 }
 
-                if (pos >= end || str[pos] != ']') throw "parse_atom: expected ']'";
+                ::gba::bits::constexpr_assert(pos >= end || str[pos] != ']', "parse_atom: expected ']'");
                 pos++; // skip ']'
                 // If parse_sequence returned a sequence node, just retype it as subdivision.
                 // Otherwise it was unwrapped (single child optimization), so wrap it.
@@ -354,13 +356,13 @@ namespace gba::music {
                         pat.add_child(stackIdx, nextAltIdx);
                     }
 
-                    if (pos >= end || str[pos] != '>') throw "parse_atom: expected '>'";
+                    ::gba::bits::constexpr_assert(pos >= end || str[pos] != '>', "parse_atom: expected '>'");
                     pos++; // skip '>'
                     return stackIdx;
                 }
 
                 // No commas - standard alternating
-                if (pos >= end || str[pos] != '>') throw "parse_atom: expected '>'";
+                ::gba::bits::constexpr_assert(pos >= end || str[pos] != '>', "parse_atom: expected '>'");
                 pos++; // skip '>'
                 return firstAltIdx;
             }
@@ -382,15 +384,15 @@ namespace gba::music {
                     pat.add_child(polyIdx, layer);
                 }
 
-                if (pos >= end || str[pos] != '}') throw "parse_atom: expected '}'";
+                ::gba::bits::constexpr_assert(pos >= end || str[pos] != '}', "parse_atom: expected '}'");
                 pos++; // skip '}'
 
                 // Check for polymeter: {a b c}%N
                 if (pos < end && str[pos] == '%') {
                     pos++; // skip '%'
                     int steps = parse_int(str, pos, end);
-                    if (steps <= 0) throw "parse_atom: polymeter steps must be > 0";
-                    if (steps > 255) throw "parse_atom: polymeter steps out of range (1-255)";
+                    ::gba::bits::constexpr_assert(steps <= 0, "parse_atom: polymeter steps must be > 0");
+                    ::gba::bits::constexpr_assert(steps > 255, "parse_atom: polymeter steps out of range (1-255)");
                     pat.nodes[polyIdx].polymeter_steps = static_cast<std::uint8_t>(steps);
                 }
 
@@ -408,7 +410,7 @@ namespace gba::music {
                 return pat.add_node(node);
             }
 
-            throw "parse_atom: unexpected character";
+            ::gba::bits::constexpr_fail("parse_atom: unexpected character");
         }
 
 
@@ -433,7 +435,7 @@ namespace gba::music {
                         pat.nodes[nodeIdx].modifier_is_timeline = true;
                     } else {
                         auto value = parse_number(str, pos, end);
-                        if (value.num == 0) throw "parse_postfix: fast multiplier must be > 0";
+                        ::gba::bits::constexpr_assert(value.num == 0, "parse_postfix: fast multiplier must be > 0");
                         pat.nodes[nodeIdx].modifier_num = value.num;
                         pat.nodes[nodeIdx].modifier_den = value.den;
                     }
@@ -455,7 +457,7 @@ namespace gba::music {
                         pat.nodes[nodeIdx].modifier_is_timeline = true;
                     } else {
                         auto value = parse_number(str, pos, end);
-                        if (value.num == 0) throw "parse_postfix: slow divisor must be > 0";
+                        ::gba::bits::constexpr_assert(value.num == 0, "parse_postfix: slow divisor must be > 0");
                         pat.nodes[nodeIdx].modifier_num = value.num;
                         pat.nodes[nodeIdx].modifier_den = value.den;
                     }
@@ -471,7 +473,7 @@ namespace gba::music {
                     auto nodeIdx = pat.add_node(node);
                     pat.add_child(nodeIdx, atom);
                     auto value = parse_number(str, pos, end);
-                    if (value.num == 0) throw "parse_postfix: replicate count must be > 0";
+                    ::gba::bits::constexpr_assert(value.num == 0, "parse_postfix: replicate count must be > 0");
                     pat.nodes[nodeIdx].modifier_num = value.num;
                     pat.nodes[nodeIdx].modifier_den = value.den;
                     atom = nodeIdx;
@@ -488,7 +490,7 @@ namespace gba::music {
                 if (c == '(') {
                     pos++; // skip '('
                     int k = parse_int(str, pos, end);
-                    if (pos >= end || str[pos] != ',') throw "parse_postfix: expected ',' in euclidean (k,n)";
+                    ::gba::bits::constexpr_assert(pos >= end || str[pos] != ',', "parse_postfix: expected ',' in euclidean (k,n)");
                     pos++; // skip ','
                     int n = parse_int(str, pos, end);
                     int r = 0;
@@ -496,15 +498,15 @@ namespace gba::music {
                         pos++; // skip ','
                         r = parse_int(str, pos, end);
                     }
-                    if (pos >= end || str[pos] != ')') throw "parse_postfix: expected ')' in euclidean";
+                    ::gba::bits::constexpr_assert(pos >= end || str[pos] != ')', "parse_postfix: expected ')' in euclidean");
                     pos++; // skip ')'
 
-                    if (k <= 0) throw "parse_postfix: euclidean pulses must be > 0";
-                    if (n <= 0) throw "parse_postfix: euclidean steps must be > 0";
-                    if (n > 64) throw "parse_postfix: euclidean steps out of range (1-64)";
-                    if (k > n) throw "parse_postfix: euclidean pulses must be <= steps";
-                    if (r < 0) throw "parse_postfix: euclidean rotation must be >= 0";
-                    if (r > 255) throw "parse_postfix: euclidean rotation out of range (0-255)";
+                    ::gba::bits::constexpr_assert(k <= 0, "parse_postfix: euclidean pulses must be > 0");
+                    ::gba::bits::constexpr_assert(n <= 0, "parse_postfix: euclidean steps must be > 0");
+                    ::gba::bits::constexpr_assert(n > 64, "parse_postfix: euclidean steps out of range (1-64)");
+                    ::gba::bits::constexpr_assert(k > n, "parse_postfix: euclidean pulses must be <= steps");
+                    ::gba::bits::constexpr_assert(r < 0, "parse_postfix: euclidean rotation must be >= 0");
+                    ::gba::bits::constexpr_assert(r > 255, "parse_postfix: euclidean rotation out of range (0-255)");
 
                     ast_node node{};
                     node.type = ast_type::euclidean;
@@ -569,7 +571,7 @@ namespace gba::music {
 
         // Verify we consumed everything
         parse_detail::skip_spaces(str, pos, len);
-        if (pos != len) throw "parse_mini: unexpected trailing characters";
+        ::gba::bits::constexpr_assert(pos != len, "parse_mini: unexpected trailing characters");
 
         return pat;
     }

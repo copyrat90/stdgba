@@ -22,6 +22,7 @@
 
 #include <gba/angle>
 #include <gba/bits/bios.hpp>
+#include <gba/bits/constexpr_assert.hpp>
 #include <gba/bits/constexpr_trig.hpp>
 #include <gba/fixed_point>
 #include <gba/peripherals>
@@ -858,8 +859,8 @@ namespace gba {
     ///
     /// @see multiboot_param
     consteval unsigned char multiboot_palette(int color, int speed, bool ascending) {
-        if (color < 0 || color > 6) throw "multiboot_palette: color out of range (0-6)";
-        if (speed < 0 || speed > 3) throw "multiboot_palette: speed out of range (0-3)";
+        ::gba::bits::constexpr_assert(color < 0 || color > 6, "multiboot_palette: color out of range (0-6)");
+        ::gba::bits::constexpr_assert(speed < 0 || speed > 3, "multiboot_palette: speed out of range (0-3)");
         return static_cast<unsigned char>(0x81 + color * 0x10 + ascending * 0x8 + speed * 0x2);
     }
 
@@ -872,7 +873,7 @@ namespace gba {
     ///
     /// @see multiboot_param
     consteval unsigned char multiboot_palette_fixed(int color) {
-        if (color < 0 || color > 6) throw "multiboot_palette_fixed: color out of range (0-6)";
+        ::gba::bits::constexpr_assert(color < 0 || color > 6, "multiboot_palette_fixed: color out of range (0-6)");
         return static_cast<unsigned char>(0xF1 + color * 0x2);
     }
 
