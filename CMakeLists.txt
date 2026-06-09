@@ -61,6 +61,7 @@ target_sources(stdgba INTERFACE
         source/testing.cpp
 )
 
+# flash.s uses PC-relative addressing patterns that rely on position-independent code
 set_source_files_properties(source/flash.s PROPERTIES COMPILE_FLAGS "-fPIC")
 
 if(STDGBA_BUILD_TESTS)

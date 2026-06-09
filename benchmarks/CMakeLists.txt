@@ -2,11 +2,7 @@ find_package(librom REQUIRED)
 
 file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS "*.cpp")
 
-foreach(bench_src ${BENCH_SOURCES})
-    get_filename_component(bench_name ${bench_src} NAME_WE)
-    add_executable(${bench_name} ${bench_src})
-
-
+function(stdgba_add_bench_support_sources bench_name)
     if(bench_name STREQUAL "bench_memcpy")
         target_sources(${bench_name} PRIVATE support/agbabi_memcpy_ref.s)
     endif()
@@ -32,15 +28,23 @@ foreach(bench_src ${BENCH_SOURCES})
             PROPERTIES COMPILE_OPTIONS "-Os"
         )
     endif()
+endfunction()
+
+foreach(bench_src ${BENCH_SOURCES})
+    get_filename_component(bench_name ${bench_src} NAME_WE)
+    add_executable(${bench_name} ${bench_src})
+
+    stdgba_add_bench_support_sources(${bench_name})
 
     target_link_libraries(${bench_name} PRIVATE librom stdgba)
     target_compile_options(${bench_name} PUBLIC -g3 -Wno-psabi)
     target_compile_options(${bench_name} PRIVATE $<$<NOT:$<CONFIG:Debug>>:-O3>)
     if(bench_name STREQUAL "bench_music")
+        # Music benchmark stresses compile-time generation and needs higher constexpr/template limits.
         target_compile_options(${bench_name} PRIVATE -ftemplate-depth=2000 -fconstexpr-loop-limit=10000000 -fconstexpr-ops-limit=5000000000)
     endif()
     # Debug (-O0) benchmark variants: override optimisation level
-    if(bench_name STREQUAL "bench_ecs_debug" OR bench_name STREQUAL "bench_entt_debug")
+    if(bench_name STREQUAL "bench_ecs_debug")
         target_compile_options(${bench_name} PRIVATE -O0)
     endif()
 endforeach()

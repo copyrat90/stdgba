@@ -463,6 +463,14 @@ int main() {
                                  "mixed create_emplace initialized all components");
     });
 
+    gba::test("create_emplace supports default construction with no values", [] {
+        mixed_registry world;
+        const auto e = world.create_emplace<physics, health, weapon>();
+
+        gba::test.expect.is_true(world.all_of<position, velocity, acceleration, health, weapon>(e),
+                                 "create_emplace with no values initialized all components");
+    });
+
     // Section: Test batch group operations with implicit group query
 
     gba::test("batch group operations using implicit groups", [] {

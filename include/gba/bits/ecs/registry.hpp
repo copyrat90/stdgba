@@ -310,10 +310,20 @@ namespace gba::ecs {
         }
 
         /// @brief Create and attach a fixed component set in a single pass.
+        ///
+        /// - With values: requires one value per component.
+        /// - Without values: value-initializes each component (`C{}`).
         template<typename... Cs, typename... Values>
         [[nodiscard]] constexpr const entity create_emplace(Values&&... values) {
             static_assert(sizeof...(Cs) > 0, "create_emplace requires at least one component");
-            static_assert(sizeof...(Cs) == sizeof...(Values), "create_emplace requires one value per component");
+            static_assert(
+                sizeof...(Values) == 0 || sizeof...(Cs) == sizeof...(Values),
+                "create_emplace requires either zero values or one value per component"
+            );
+            if constexpr (sizeof...(Values) == 0) {
+                static_assert((std::is_default_constructible_v<Cs> && ...),
+                              "create_emplace without values requires default-constructible components");
+            }
             if consteval {
                 if (m_alive >= static_cast<std::uint8_t>(Capacity)) throw "registry::create_emplace: capacity exceeded";
             }
@@ -321,7 +331,11 @@ namespace gba::ecs {
             const auto slot = allocate_slot();
             m_mask[slot] = alive_bit | (bit_of<Cs> | ...);
             (++m_component_count[index_of<Cs>], ...);
-            ((std::get<index_of<Cs>>(m_pools)[slot] = Cs{std::forward<Values>(values)}), ...);
+            if constexpr (sizeof...(Values) == 0) {
+                ((std::get<index_of<Cs>>(m_pools)[slot] = Cs{}), ...);
+            } else {
+                ((std::get<index_of<Cs>>(m_pools)[slot] = Cs{std::forward<Values>(values)}), ...);
+            }
             return entity(slot, m_gen[slot]);
         }
 
@@ -756,6 +770,8 @@ namespace gba::ecs {
         ///
         /// Supports mixed component/group query packs, e.g.
         /// `create_emplace<physics, health>(...)`.
+        ///
+        /// Passing no values default-constructs all resolved components.
         template<typename... Query, typename... Values>
         [[nodiscard]] constexpr const entity create_emplace(Values&&... values) {
             using flattened = flatten_groups_t<Query...>;
