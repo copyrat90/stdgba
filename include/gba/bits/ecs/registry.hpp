@@ -418,7 +418,7 @@ namespace gba::ecs {
             /// });
             /// @endcode
             template<typename Fn>
-            [[gnu::target("arm"), gnu::section(".iwram._gba_ecs_each"), gnu::noinline, gnu::flatten]]
+            [[gnu::target("arm"), gnu::section(".iwram._gba_ecs_each"), gnu::noinline, gnu::flatten, gnu::noipa]]
             void each_arm(Fn&& fn) const {
                 const unsigned int count = m_reg->m_alive;
                 const bool allMatch = ((m_reg->m_component_count[index_of<ViewCs>] == m_reg->m_alive) && ...)
@@ -1137,7 +1137,7 @@ namespace gba::ecs {
 
         /// @brief ARM/IWRAM version of match() for hot conditional dispatch paths.
         template<typename... Cases, typename... Fns>
-        [[gnu::target("arm"), gnu::section(".iwram._gba_ecs_match"), gnu::noinline, gnu::flatten]]
+        [[gnu::target("arm"), gnu::section(".iwram._gba_ecs_match"), gnu::noinline, gnu::flatten, gnu::noipa]]
         bool match_arm(entity e, Fns&&... fns) {
             static_assert(sizeof...(Cases) > 0, "match_arm requires at least one case query");
             static_assert(sizeof...(Cases) == sizeof...(Fns), "match_arm requires one lambda per case query");
@@ -1148,7 +1148,7 @@ namespace gba::ecs {
 
         /// @brief ARM/IWRAM version of match() for const registries.
         template<typename... Cases, typename... Fns>
-        [[gnu::target("arm"), gnu::section(".iwram._gba_ecs_match"), gnu::noinline, gnu::flatten]]
+        [[gnu::target("arm"), gnu::section(".iwram._gba_ecs_match"), gnu::noinline, gnu::flatten, gnu::noipa]]
         bool match_arm(entity e, Fns&&... fns) const {
             static_assert(sizeof...(Cases) > 0, "match_arm requires at least one case query");
             static_assert(sizeof...(Cases) == sizeof...(Fns), "match_arm requires one lambda per case query");
