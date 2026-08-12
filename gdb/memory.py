@@ -95,7 +95,8 @@ class BitpoolPrinter:
     def to_string(self):
         try:
             base = int(self.val['m_base'])
-            chunk_size = int(self.val['m_chunkSize'])
+            chunk_shift = int(self.val['m_chunkShift'])
+            chunk_size = 1 << chunk_shift
             bitmask = int(self.val['m_bitmask'])
 
             # Count used chunks (popcount)
