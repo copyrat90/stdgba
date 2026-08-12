@@ -14,7 +14,6 @@ include/gba/ecs              -> public facade
 include/gba/bits/ecs/        -> internal implementation
   +- entity.hpp
   +- group.hpp
-  +- group_metadata.hpp
   +- registry.hpp
 ```
 

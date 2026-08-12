@@ -51,6 +51,7 @@ using combat = gba::ecs::group<health, armor, weapon>;
 
 // Combined group for complete character
 using character = gba::ecs::group<physics, combat>;
+using no_physics = gba::ecs::group<gba::ecs::exclude<position>, gba::ecs::exclude<velocity>>;
 
 // Registry using groups - much cleaner than listing all components
 using grouped_registry = gba::ecs::registry<64, character>;
@@ -61,7 +62,7 @@ using flat_registry = gba::ecs::registry<64, position, velocity, acceleration, h
 // Overlapping groups should deduplicate by first appearance.
 using overlap_a = gba::ecs::group<position, velocity, health>;
 using overlap_b = gba::ecs::group<velocity, armor, position, weapon>;
-using overlap_flat = gba::ecs::flatten_groups_t<overlap_a, overlap_b>;
+using overlap_flat = gba::ecs::flatten_groups<overlap_a, overlap_b>;
 static_assert(std::is_same_v<overlap_flat, gba::ecs::group<position, velocity, health, armor, weapon>>,
               "group flattening should deduplicate components while preserving first-seen order");
 
@@ -246,6 +247,25 @@ int main() {
         });
         gba::test.expect.eq(manual_count, physics_count,
                            "view<group> expands to same results as manual view");
+    });
+
+    gba::test("view excludes component groups", [] {
+        grouped_registry world;
+        auto complete = world.create();
+        auto health_only = world.create();
+
+        world.emplace<position>(complete, 1, 2);
+        world.emplace<velocity>(complete, 3, 4);
+        world.emplace<health>(complete, 100);
+        world.emplace<health>(health_only, 50);
+
+        int count = 0;
+        world.view<health, gba::ecs::exclude<physics>>().each([&count](health&) { ++count; });
+        gba::test.expect.eq(count, 1, "group exclusion matches entities without physics components");
+
+        int grouped_count = 0;
+        world.view<health, no_physics>().each([&grouped_count](health&) { ++grouped_count; });
+        gba::test.expect.eq(grouped_count, 1, "group of exclusions matches entities without physics components");
     });
 
     // Section: Test implicit get<group>() optimisation

@@ -270,6 +270,19 @@ int main() {
         gba::test.expect.eq(count, 3, "only 3 match");
     });
 
+    gba::test("view excludes entities with a component", [] {
+        test_registry reg;
+        for (int i = 0; i < 5; ++i) {
+            auto e = reg.create();
+            reg.emplace<pos_t>(e, i, 0);
+            if (i < 2) reg.emplace<hp_t>(e, 100);
+        }
+
+        int count = 0;
+        reg.view<pos_t, gba::ecs::exclude<hp_t>>().each([&count](pos_t&) { ++count; });
+        gba::test.expect.eq(count, 3, "only entities without hp match");
+    });
+
     gba::test("view skips destroyed entities", [] {
         test_registry reg;
         auto e0 = reg.create();

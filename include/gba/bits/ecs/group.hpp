@@ -40,6 +40,24 @@ namespace gba::ecs {
         using components_tuple = std::tuple<Cs...>;
     };
 
+    /// @brief A negated component query for views.
+    ///
+    /// Components wrapped in `exclude` must be absent for an entity to match.
+    ///
+    /// @code{.cpp}
+    /// world.view<position, gba::ecs::exclude<dead>>().each([](position& p) {
+    ///     // Only entities with position and without dead are visited.
+    /// });
+    /// @endcode
+    template<typename... Cs>
+    struct exclude {
+        /// Marker to identify this as an exclusion query.
+        static constexpr bool is_ecs_exclude = true;
+
+        /// Tuple of the excluded component types (for metaprogramming).
+        using components_tuple = std::tuple<Cs...>;
+    };
+
     namespace detail {
         template<typename T, typename G>
         struct contains;
@@ -95,8 +113,8 @@ namespace gba::ecs {
 
     /// @brief Convenience alias to flatten a mixed list of types and groups.
     ///
-    /// Transforms `flatten_groups_t<T1, T2, group<T3, T4>, T5>` into `group<T1, T2, T3, T4, T5>`.
+    /// Transforms `flatten_groups<T1, T2, group<T3, T4>, T5>` into `group<T1, T2, T3, T4, T5>`.
     template<typename... Ts>
-    using flatten_groups_t = typename detail::flatten_groups<Ts...>::type;
+    using flatten_groups = typename detail::flatten_groups<Ts...>::type;
 
 } // namespace gba::ecs

@@ -6,7 +6,6 @@
 
 #include <gba/bits/ecs/entity.hpp>
 #include <gba/bits/ecs/group.hpp>
-#include <gba/bits/ecs/group_metadata.hpp>
 
 #include <array>
 #include <bit>
@@ -47,6 +46,91 @@ namespace gba::ecs {
         template<typename... Cs>
         struct extract_components<group<Cs...>> {
             using type = std::tuple<Cs...>;
+        };
+
+        template<typename Acc, typename Group>
+        struct append_group;
+
+        template<typename... Existing, typename... New>
+        struct append_group<group<Existing...>, group<New...>> {
+            using type = typename flatten_groups_acc<group<Existing...>, New...>::type;
+        };
+
+        template<typename Includes, typename Excludes, typename... Queries>
+        struct split_query_acc;
+
+        template<typename Includes, typename Excludes>
+        struct split_query_acc<Includes, Excludes> {
+            using includes = Includes;
+            using excludes = Excludes;
+        };
+
+        template<typename Excludes, typename... Queries>
+        struct split_exclude_acc;
+
+        template<typename Excludes>
+        struct split_exclude_acc<Excludes> {
+            using type = Excludes;
+        };
+
+        template<typename Excludes, typename... Nested>
+        struct split_exclude_acc<Excludes, group<Nested...>> {
+            using type = typename split_exclude_acc<Excludes, Nested...>::type;
+        };
+
+        template<typename Excludes, typename... Nested>
+        struct split_exclude_acc<Excludes, exclude<Nested...>> {
+            using type = typename split_exclude_acc<Excludes, Nested...>::type;
+        };
+
+        template<typename Excludes, typename Query, typename... Rest>
+        struct split_exclude_acc<Excludes, Query, Rest...> {
+            using next = typename append_group<Excludes, group<Query>>::type;
+            using type = typename split_exclude_acc<next, Rest...>::type;
+        };
+
+        template<typename Includes, typename Excludes, typename Query>
+        struct split_query_one {
+            using included = typename append_group<Includes, group<Query>>::type;
+            using type = split_query_acc<included, Excludes>;
+        };
+
+        template<typename Includes, typename Excludes, typename... Cs>
+        struct split_query_one<Includes, Excludes, group<Cs...>> {
+            using type = split_query_acc<Includes, Excludes, Cs...>;
+        };
+
+        template<typename Includes, typename Excludes, typename... Cs>
+        struct split_query_one<Includes, Excludes, exclude<Cs...>> {
+            using excluded = typename split_exclude_acc<Excludes, Cs...>::type;
+            using type = split_query_acc<Includes, excluded>;
+        };
+
+        template<typename Includes, typename Excludes, typename Query, typename... Rest>
+        struct split_query_acc<Includes, Excludes, Query, Rest...> {
+            using next = typename split_query_one<Includes, Excludes, Query>::type;
+            using includes = typename split_query_acc<typename next::includes, typename next::excludes, Rest...>::includes;
+            using excludes = typename split_query_acc<typename next::includes, typename next::excludes, Rest...>::excludes;
+        };
+
+        template<typename... Queries>
+        using split_query = split_query_acc<group<>, group<>, Queries...>;
+
+        template<typename Include, typename... Excludes>
+        struct include_exclude_disjoint : std::bool_constant<(!std::is_same_v<Include, Excludes> && ...)> {};
+
+        template<typename Includes, typename Excludes>
+        struct view_query;
+
+        template<typename... Includes, typename... Excludes>
+        struct view_query<group<Includes...>, group<Excludes...>> {
+            static_assert(
+                (include_exclude_disjoint<Includes, Excludes...>::value && ...),
+                "view cannot include and exclude the same component"
+            );
+
+            using includes = group<Includes...>;
+            using excludes = group<Excludes...>;
         };
 
     } // namespace detail
@@ -209,12 +293,17 @@ namespace gba::ecs {
         /// // or:
         /// world.view<position, velocity>().each([](position& p, velocity& v) { ... });
         /// @endcode
-        template<typename... ViewCs>
-        class basic_view {
+        template<typename ViewQuery>
+        class basic_view;
+
+        template<typename... ViewCs, typename... ExcludeCs>
+        class basic_view<detail::view_query<group<ViewCs...>, group<ExcludeCs...>>> {
             static_assert(sizeof...(ViewCs) > 0, "view requires at least one component");
 
             /// Required mask: alive + all requested components.
             static constexpr std::uint32_t required = (bit_of<ViewCs> | ...) | alive_bit;
+            /// Forbidden mask: excluded components must all be absent.
+            static constexpr std::uint32_t forbidden = (0u | ... | bit_of<ExcludeCs>);
 
             registry_impl* m_reg;
 
@@ -235,7 +324,8 @@ namespace gba::ecs {
                     if (m_all_match) return;
                     while (m_idx < m_end) {
                         const auto slot = m_reg->m_alive_list[m_idx];
-                        if ((m_reg->m_mask[slot] & required) == required) return;
+                        if ((m_reg->m_mask[slot] & required) == required
+                            && (m_reg->m_mask[slot] & forbidden) == 0) return;
                         ++m_idx;
                     }
                 }
@@ -263,7 +353,8 @@ namespace gba::ecs {
             };
 
             [[nodiscard]] constexpr iterator begin() const noexcept {
-                const bool allMatch = ((m_reg->m_component_count[index_of<ViewCs>] == m_reg->m_alive) && ...);
+                const bool allMatch = ((m_reg->m_component_count[index_of<ViewCs>] == m_reg->m_alive) && ...)
+                                   && ((m_reg->m_component_count[index_of<ExcludeCs>] == 0) && ...);
                 return {m_reg, 0u, m_reg->m_alive, allMatch};
             }
 
@@ -281,7 +372,8 @@ namespace gba::ecs {
             template<typename Fn>
             [[gnu::always_inline]] constexpr void each(Fn&& fn) const {
                 const unsigned int count = m_reg->m_alive;
-                const bool allMatch = ((m_reg->m_component_count[index_of<ViewCs>] == m_reg->m_alive) && ...);
+                const bool allMatch = ((m_reg->m_component_count[index_of<ViewCs>] == m_reg->m_alive) && ...)
+                                   && ((m_reg->m_component_count[index_of<ExcludeCs>] == 0) && ...);
 
                 auto invoke = [&](unsigned int slot) {
                     if constexpr (std::is_invocable_v<Fn, const entity, ViewCs&...>) {
@@ -301,7 +393,9 @@ namespace gba::ecs {
                 } else {
                     for (unsigned int j = 0; j < count; ++j) {
                         const unsigned int slot = m_reg->m_alive_list[j];
-                        if ((m_reg->m_mask[slot] & required) == required) invoke(slot);
+                        if ((m_reg->m_mask[slot] & required) == required
+                            && (m_reg->m_mask[slot] & forbidden) == 0)
+                            invoke(slot);
                     }
                 }
             }
@@ -327,7 +421,8 @@ namespace gba::ecs {
             [[gnu::target("arm"), gnu::section(".iwram._gba_ecs_each"), gnu::noinline, gnu::flatten]]
             void each_arm(Fn&& fn) const {
                 const unsigned int count = m_reg->m_alive;
-                const bool allMatch = ((m_reg->m_component_count[index_of<ViewCs>] == m_reg->m_alive) && ...);
+                const bool allMatch = ((m_reg->m_component_count[index_of<ViewCs>] == m_reg->m_alive) && ...)
+                                   && ((m_reg->m_component_count[index_of<ExcludeCs>] == 0) && ...);
 
                 auto invoke = [&](unsigned int slot) {
                     if constexpr (std::is_invocable_v<Fn, const entity, ViewCs&...>) {
@@ -347,7 +442,9 @@ namespace gba::ecs {
                 } else {
                     for (unsigned int j = 0; j < count; ++j) {
                         const unsigned int slot = m_reg->m_alive_list[j];
-                        if ((m_reg->m_mask[slot] & required) == required) invoke(slot);
+                        if ((m_reg->m_mask[slot] & required) == required
+                            && (m_reg->m_mask[slot] & forbidden) == 0)
+                            invoke(slot);
                     }
                 }
             }
@@ -597,9 +694,9 @@ namespace gba::ecs {
         }
 
         /// @brief Create a view over entities that have all listed components.
-        template<typename... ViewCs>
-        [[nodiscard]] constexpr basic_view<ViewCs...> view() noexcept {
-            return basic_view<ViewCs...>{this};
+        template<typename ViewQuery>
+        [[nodiscard]] constexpr basic_view<ViewQuery> view() noexcept {
+            return basic_view<ViewQuery>{this};
         }
 
         constexpr ~registry_impl() noexcept {
@@ -653,7 +750,7 @@ namespace gba::ecs {
     /// @endcode
     template<std::size_t Capacity, typename... ComponentsAndGroups>
     class registry {
-        using flattened_components = flatten_groups_t<ComponentsAndGroups...>;
+        using flattened_components = flatten_groups<ComponentsAndGroups...>;
 
         using components_tuple = typename detail::extract_components<flattened_components>::type;
 
@@ -665,14 +762,18 @@ namespace gba::ecs {
 
         impl_type m_impl;
 
-        template<typename... Query, typename... Cs, std::size_t... Is>
-        [[nodiscard]] constexpr auto view_flat_impl(std::index_sequence<Is...>*, std::tuple<Cs...>*) noexcept {
-            return m_impl.template view<std::tuple_element_t<Is, std::tuple<Cs...>>...>();
+        template<typename... IncludeCs, typename... ExcludeCs>
+        [[nodiscard]] constexpr auto view_flat_impl(
+            group<IncludeCs...>*, group<ExcludeCs...>*) noexcept {
+            using query = detail::view_query<group<IncludeCs...>, group<ExcludeCs...>>;
+            return m_impl.template view<query>();
         }
 
-        template<typename... Query, typename... Cs, std::size_t... Is>
-        [[nodiscard]] constexpr auto view_flat_impl(std::index_sequence<Is...>*, std::tuple<Cs...>*) const noexcept {
-            return m_impl.template view<std::tuple_element_t<Is, std::tuple<Cs...>>...>();
+        template<typename... IncludeCs, typename... ExcludeCs>
+        [[nodiscard]] constexpr auto view_flat_impl(
+            group<IncludeCs...>*, group<ExcludeCs...>*) const noexcept {
+            using query = detail::view_query<group<IncludeCs...>, group<ExcludeCs...>>;
+            return m_impl.template view<query>();
         }
 
         template<typename... Query, typename... Cs, std::size_t... Is>
@@ -767,7 +868,7 @@ namespace gba::ecs {
 
         template<typename Case>
         [[nodiscard]] constexpr bool case_matches(entity e) {
-            using flattened = flatten_groups_t<Case>;
+            using flattened = flatten_groups<Case>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return case_matches_flat_impl(
@@ -779,7 +880,7 @@ namespace gba::ecs {
 
         template<typename Case>
         [[nodiscard]] constexpr bool case_matches(entity e) const {
-            using flattened = flatten_groups_t<Case>;
+            using flattened = flatten_groups<Case>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return case_matches_flat_impl(
@@ -809,7 +910,7 @@ namespace gba::ecs {
 
         template<typename Case, typename Fn>
         constexpr void invoke_case(entity e, Fn&& fn) {
-            using flattened = flatten_groups_t<Case>;
+            using flattened = flatten_groups<Case>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             invoke_case_flat_impl(
@@ -822,7 +923,7 @@ namespace gba::ecs {
 
         template<typename Case, typename Fn>
         constexpr void invoke_case(entity e, Fn&& fn) const {
-            using flattened = flatten_groups_t<Case>;
+            using flattened = flatten_groups<Case>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             invoke_case_flat_impl(
@@ -866,7 +967,7 @@ namespace gba::ecs {
         /// Passing no values default-constructs all resolved components.
         template<typename... Query, typename... Values>
         [[nodiscard]] constexpr const entity create_emplace(Values&&... values) {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return create_emplace_flat_impl<Query...>(
@@ -905,7 +1006,7 @@ namespace gba::ecs {
         /// Supports mixed component/group query packs.
         template<typename... Query>
         constexpr void remove_unchecked(const entity e) noexcept {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             remove_unchecked_flat_impl<Query...>(
@@ -927,7 +1028,7 @@ namespace gba::ecs {
         /// - Multiple resolved components -> returns `std::tuple<...&>`
         template<typename... Query>
         [[nodiscard]] constexpr decltype(auto) get(const entity e) noexcept {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return get_flat_impl<Query...>(
@@ -940,7 +1041,7 @@ namespace gba::ecs {
         /// @brief Get one or more components using a mixed component/group query pack. Const overload.
         template<typename... Query>
         [[nodiscard]] constexpr decltype(auto) get(const entity e) const noexcept {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return get_flat_impl<Query...>(
@@ -956,7 +1057,7 @@ namespace gba::ecs {
         /// - Multiple resolved components -> returns `std::tuple<...*>`
         template<typename... Query>
         [[nodiscard]] constexpr decltype(auto) try_get(const entity e) noexcept {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return try_get_flat_impl<Query...>(
@@ -969,7 +1070,7 @@ namespace gba::ecs {
         /// @brief Try to get one or more components using a mixed component/group query pack. Const overload.
         template<typename... Query>
         [[nodiscard]] constexpr decltype(auto) try_get(const entity e) const noexcept {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return try_get_flat_impl<Query...>(
@@ -985,7 +1086,7 @@ namespace gba::ecs {
         /// Returns false when entity is invalid or any requested component is missing.
         template<typename... Query, typename Fn>
         constexpr bool with(const entity e, Fn&& fn) {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return with_flat_impl<Query...>(
@@ -999,7 +1100,7 @@ namespace gba::ecs {
         /// @brief Run callback if all components from a mixed component/group query pack are present. Const overload.
         template<typename... Query, typename Fn>
         constexpr bool with(const entity e, Fn&& fn) const {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return with_flat_impl<Query...>(
@@ -1059,7 +1160,7 @@ namespace gba::ecs {
         /// @brief Check if entity has ALL components from a mixed component/group query pack.
         template<typename... Query>
         [[nodiscard]] constexpr bool all_of(const entity e) const noexcept {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return all_of_flat_impl<Query...>(
@@ -1072,7 +1173,7 @@ namespace gba::ecs {
         /// @brief Check if entity has ANY component from a mixed component/group query pack.
         template<typename... Query>
         [[nodiscard]] constexpr bool any_of(const entity e) const noexcept {
-            using flattened = flatten_groups_t<Query...>;
+            using flattened = flatten_groups<Query...>;
             using components_tpl = typename detail::extract_components<flattened>::type;
             constexpr std::size_t count = std::tuple_size_v<components_tpl>;
             return any_of_flat_impl<Query...>(
@@ -1085,24 +1186,20 @@ namespace gba::ecs {
         /// @brief Create a view over matching entities from a mixed component/group query pack.
         template<typename... Query>
         [[nodiscard]] constexpr auto view() noexcept {
-            using flattened = flatten_groups_t<Query...>;
-            using components_tpl = typename detail::extract_components<flattened>::type;
-            constexpr std::size_t count = std::tuple_size_v<components_tpl>;
-            return view_flat_impl<Query...>(
-                (std::make_index_sequence<count>*) nullptr,
-                (components_tpl*) nullptr
+            using split = detail::split_query<Query...>;
+            return view_flat_impl(
+                (typename split::includes*) nullptr,
+                (typename split::excludes*) nullptr
             );
         }
 
         /// @brief Create a view over matching entities from a mixed component/group query pack. Const overload.
         template<typename... Query>
         [[nodiscard]] constexpr auto view() const noexcept {
-            using flattened = flatten_groups_t<Query...>;
-            using components_tpl = typename detail::extract_components<flattened>::type;
-            constexpr std::size_t count = std::tuple_size_v<components_tpl>;
-            return view_flat_impl<Query...>(
-                (std::make_index_sequence<count>*) nullptr,
-                (components_tpl*) nullptr
+            using split = detail::split_query<Query...>;
+            return view_flat_impl(
+                (typename split::includes*) nullptr,
+                (typename split::excludes*) nullptr
             );
         }
 

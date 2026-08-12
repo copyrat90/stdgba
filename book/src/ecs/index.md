@@ -139,7 +139,7 @@ using graphics = gba::ecs::group<sprite_id, palette_bank>;
 using world = gba::ecs::registry<128, physics, graphics, health>;
 ```
 
-Both are equivalent at runtime; groups flattened to individual components at compile time.
+Both are equivalent at runtime; groups are flattened to individual components at compile time.
 
 ### Entity lifecycle
 
@@ -176,6 +176,17 @@ Both are equivalent at runtime; groups flattened to individual components at com
 | `.each(fn)`                   | Portable systems; constexpr-friendly                 |
 | `.each_arm(fn)`               | Measured hot loops requiring ARM mode + IWRAM        |
 | `.each(entity, fn)`        | Systems that need the entity ID alongside components |
+
+Use `gba::ecs::exclude<Cs...>` inside a view query to require that the listed
+components are absent. Groups can be passed to `exclude` or can contain
+exclusion wrappers. Excluded components are filters only and are not passed to
+the callback:
+
+```cpp
+world.view<position, gba::ecs::exclude<dead>>().each([](position& pos) {
+    // Only entities with position and without dead are visited.
+});
+```
 
 ### Conditional dispatch APIs
 
