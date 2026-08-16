@@ -11,7 +11,7 @@
 /// @code{.cpp}
 /// #include <gba/ecs>
 ///
-/// // Components - sizes must be powers of two
+/// // Components - sizes are automatically padded internally, no manual padding needed
 /// struct position { int x, y; };   // 8 bytes
 /// struct velocity { int vx, vy; }; // 8 bytes
 /// struct health   { int hp; };     // 4 bytes
@@ -68,17 +68,19 @@
 /// @endcode
 ///
 
-/// All component types must have power-of-two sizes. This enables shift-based
-/// addressing in the component pools (critical for ARM7TDMI, which lacks a
-/// barrel-shifter MUL path for indexed loads). Use `gba::ecs::pad<N>` to
-/// pad structs to compliance:
+/// Component pool storage automatically rounds each component's per-slot
+/// stride up to the next power of two (`std::bit_ceil`), so shift-based
+/// addressing is used internally (critical for ARM7TDMI, which lacks a
+/// barrel-shifter MUL path for indexed loads) without requiring components
+/// to have a power-of-two `sizeof` themselves. No manual padding is needed:
 ///
 /// @code{.cpp}
 /// struct sprite_id {
-///     std::uint8_t id;
-///     gba::ecs::pad<3> _;   // pad 1 -> 4 bytes
+///     std::uint8_t id;   // sizeof(sprite_id) == 1, stride rounds to 1
 /// };
-/// static_assert(sizeof(sprite_id) == 4);
+/// struct entry {
+///     std::uint8_t a, b, c;  // sizeof(entry) == 3, stride rounds to 4
+/// };
 /// @endcode
 ///
 /// ## Constexpr Support

@@ -385,21 +385,19 @@ int main() {
         gba::test.is_true(gen_changed, "constexpr gen increment");
     });
 
-    // Section: Pad utility
+    // Section: Automatic stride padding
 
-    gba::test("pad utility sizes", [] {
-        struct padded_1b {
-            std::uint8_t v;
+    gba::test("non-power-of-two component sizes are auto-padded", [] {
+        struct odd3 {
+            std::uint8_t a, b, c; // sizeof == 3, not a power of two
         };
-        struct padded_4b {
-            std::uint8_t v;
-            gba::ecs::pad<3> _;
-        };
-        static_assert(sizeof(padded_1b) == 1);
-        static_assert(sizeof(padded_4b) == 4);
-        static_assert(std::has_single_bit(sizeof(padded_4b)));
-        gba::test.is_true(true);
+        gba::ecs::registry_impl<4, odd3> reg;
+        auto e = reg.create();
+        reg.emplace<odd3>(e, std::uint8_t{1}, std::uint8_t{2}, std::uint8_t{3});
+        auto& c = reg.get<odd3>(e);
+        gba::test.is_true(c.a == 1 && c.b == 2 && c.c == 3, "odd-sized component roundtrip");
     });
+
 
     // Section: Size tracking edge cases
 

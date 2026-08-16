@@ -147,36 +147,49 @@ namespace gba::ecs {
     class registry_impl {
         static_assert(Capacity > 0 && Capacity <= 255, "capacity must be in [1, 255]");
         static_assert(sizeof...(Components) > 0 && sizeof...(Components) <= 31, "component count must be in [1, 31]");
-        static_assert(((std::has_single_bit(sizeof(Components))) && ...), "all component sizes must be powers of two");
         static_assert(
             detail::supports_constexpr_byte_lifetime || (std::is_default_constructible_v<Components> && ...),
             "non-default-constructible ECS components require C++26 constexpr byte-lifetime features"
         );
 
+        /// @brief Power-of-two stride used for shift-based pool indexing.
+        template<typename C>
+        static constexpr std::size_t stride_of = std::bit_ceil(sizeof(C));
+
         template<typename C>
         struct pool_storage {
             static_assert(std::is_object_v<C>, "component type must be an object type");
 
-            // C++26 path: constexpr byte-storage using void*-cast + placement new
-            // (non-default-constructible support).
-            // C++23 fallback: legacy default-constructed array storage to keep constexpr behavior.
+            static constexpr std::size_t stride = stride_of<C>;
+
+            // C++26 path: constexpr byte-storage using void*-cast + placement new.
+            // C++23 fallback: default-constructed array storage to keep constexpr behavior.
 #if defined(__cpp_constexpr) && __cpp_constexpr >= 202406L
-            std::array<std::byte, sizeof(C) * Capacity> bytes{};
+            alignas(alignof(C)) std::array<std::byte, stride * Capacity> bytes{};
 
             [[nodiscard]] constexpr C* ptr_at(const std::size_t i) noexcept {
-                return static_cast<C*>(static_cast<void*>(bytes.data() + i * sizeof(C)));
+                return static_cast<C*>(static_cast<void*>(bytes.data() + i * stride));
             }
             [[nodiscard]] constexpr const C* ptr_at(const std::size_t i) const noexcept {
-                return static_cast<const C*>(static_cast<const void*>(bytes.data() + i * sizeof(C)));
+                return static_cast<const C*>(static_cast<const void*>(bytes.data() + i * stride));
             }
 #else
-            std::array<C, Capacity> values{};
+            template<typename T>
+            struct [[deprecated("gba::ecs: implicit pool padding is active for this component; it increases memory usage. Prefer a power-of-two-sized component or reorder its fields.")]] padded_slot {
+                T value{};
+                [[no_unique_address]] std::array<std::byte, stride_of<T> - sizeof(T)> pad{};
+            };
+            using slot_type = std::conditional_t<stride == sizeof(C), C, padded_slot<C>>;
+
+            std::array<slot_type, Capacity> values{};
 
             [[nodiscard]] constexpr C* ptr_at(const std::size_t i) noexcept {
-                return std::addressof(values[i]);
+                if constexpr (std::is_same_v<slot_type, C>) return std::addressof(values[i]);
+                else return std::addressof(values[i].value);
             }
             [[nodiscard]] constexpr const C* ptr_at(const std::size_t i) const noexcept {
-                return std::addressof(values[i]);
+                if constexpr (std::is_same_v<slot_type, C>) return std::addressof(values[i]);
+                else return std::addressof(values[i].value);
             }
 #endif
 

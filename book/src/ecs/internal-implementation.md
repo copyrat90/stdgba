@@ -148,23 +148,15 @@ The registry uses `if consteval` checks for invalid operations such as:
 
 That means a misuse inside a `static constexpr` setup produces a compiler error instead of a bad runtime state.
 
-## The power-of-two size rule, internally
+## Automatic stride padding, internally
 
-The registry enforces this with:
-
-```cpp
-static_assert(((std::has_single_bit(sizeof(Components))) && ...),
-			  "all component sizes must be powers of two");
-```
-
-It is not just stylistic. The implementation is tuned around simple addressing and predictable pool layout. If you have a 3-byte or 12-byte component, pad it to 4 or 16 bytes.
+The registry relies on power-of-two strides for cheap indexed addressing, and it applies this rule internally instead of requiring users to pad their component types manually.
 
 ```cpp
-struct sprite_id {
-	std::uint8_t id;
-	gba::ecs::pad<3> _;
-};
+static constexpr std::size_t stride = std::bit_ceil(sizeof(C));
 ```
+
+Each component pool uses a slot stride of `stride` bytes. A 3-byte component therefore occupies 4-byte slots, and a 5-byte component occupies 8-byte slots. The user-facing type remains unchanged; only the storage layout is padded when needed.
 
 ## A concrete storage example
 
@@ -232,7 +224,6 @@ struct velocity {
 
 struct sprite_id {
 	std::uint8_t id;
-	gba::ecs::pad<3> _;
 };
 
 struct health {

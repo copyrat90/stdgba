@@ -32,21 +32,3 @@ namespace gba {
     inline constexpr entity entity_null;
 
 } // namespace gba
-
-namespace gba::ecs {
-
-    /// @brief Padding utility for power-of-two component size compliance.
-    ///
-    /// @code{.cpp}
-    /// struct sprite_id {
-    ///     std::uint8_t id;
-    ///     gba::ecs::pad<3> _;   // pad to 4 bytes (power of two)
-    /// };
-    /// static_assert(sizeof(sprite_id) == 4);
-    /// @endcode
-    template<std::size_t N>
-    struct pad {
-        std::byte data[N]{};
-    };
-
-} // namespace gba::ecs

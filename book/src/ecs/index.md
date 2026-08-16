@@ -31,7 +31,7 @@ The result is data-oriented design without sacrificing readability.
 - **predictable iteration costs** -- no sparse sets, no type-erased callbacks
 - **flat dense storage** -- all-of-type component arrays in memory order
 - **generation-based entity handles** -- 16-bit packed handles with stale-handle detection
-- **power-of-two component sizes** -- enables shift-based pool addressing instead of multiplies
+- **automatic stride padding** -- each pool rounds its slot size up to the next power of two, so indexing stays shift-based without manual component padding
 - **constexpr safety** -- invalid operations fail at compile time in constant-evaluation contexts
 
 ## The mental model
@@ -104,7 +104,6 @@ struct health { int hp; };
 
 struct sprite_id {
 	std::uint8_t id;
-	gba::ecs::pad<3> _;
 };
 
 using world_type = gba::ecs::registry<128, position, velocity, health, sprite_id>;
@@ -255,20 +254,19 @@ That buys the implementation several things:
 
 It is a strong fit for GBA projects, where the total set of gameplay component types is usually small and stable.
 
-## Power-of-two component sizes
+## Automatic component stride padding
 
-Each component type must have a power-of-two `sizeof(T)`.
+The runtime keeps the fast shift-based addressing, but it does it automatically. Each pool stores values at a per-slot stride of `std::bit_ceil(sizeof(T))`, so components do not need to be manually padded to a power-of-two size.
 
 ```cpp
 struct sprite_id {
 	std::uint8_t id;
-	gba::ecs::pad<3> _;
 };
 
-static_assert(sizeof(sprite_id) == 4);
+static_assert(std::bit_ceil(sizeof(sprite_id)) == 1);
 ```
 
-This is not just a style rule - it supports the simple shift-based pool addressing the implementation is built around.
+This keeps the implementation cheap and predictable without forcing users to sprinkle `pad<N>` members through their data model.
 
 ## Constexpr-friendly behaviour
 

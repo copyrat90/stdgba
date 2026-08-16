@@ -9,7 +9,6 @@ include/gba/ecs              -> public facade
   +- registry<Capacity, Components...>
   +- group<Components...>
   +- entity (handle with generation)
-  +- pad<N> (padding utility)
 
 include/gba/bits/ecs/        -> internal implementation
   +- entity.hpp
@@ -258,28 +257,20 @@ world.view<position, velocity>().each([](position& pos, const velocity& vel) {
 });
 ```
 
-## Power-of-two component sizes
+## Automatic component stride padding
 
-Every component type must have a power-of-two `sizeof(T)`.
+The implementation keeps cheap shift-based addressing without forcing users to pad their component types manually. Each component pool rounds its per-slot stride up to the next power of two with `std::bit_ceil(sizeof(T))`.
 
-| Size            | Allowed? |
-| --------------- | -------- |
-| 1               | yes      |
-| 2               | yes      |
-| 4               | yes      |
-| 8               | yes      |
-| 3, 5, 6, 7, ... | no       |
+| Component size | Pool stride |
+| -------------- | ----------- |
+| 1              | 1           |
+| 2              | 2           |
+| 3              | 4           |
+| 4              | 4           |
+| 5              | 8           |
+| 8              | 8           |
 
-If a type is almost right, pad it:
-
-```cpp
-struct sprite_id {
-    std::uint8_t id;
-    gba::ecs::pad<3> _;
-};
-```
-
-This rule exists to support cheap shift-based addressing in the component pools.
+The user-visible type stays natural; the storage layout is padded internally when needed.
 
 ## What the architecture intentionally omits
 
